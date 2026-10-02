@@ -79,8 +79,8 @@ High search signal already; short clips; good for end-to-end verify/quality befo
 ## Phases 2 to 5 (written off the VM, 2026-10-02 afternoon)
 
 Report, export, re-ingest loop, web UI, README, demo script and submission draft were added on top
-of the live-tested Phase 0 and 1 code. They have NOT run against the live stack yet. They pass an
-end-to-end test against a mock built from the skill docs (`python -m pytest tests -q`).
+of the live-tested Phase 0 and 1 code. They pass an end-to-end test against a mock built from the
+skill docs (`python -m pytest tests -q`) and were then run on the VM (results below).
 
 Check on the first live run:
 
@@ -97,3 +97,16 @@ Changes to Phase 0 and 1 code: `verify.py` no longer caches an "unverified" fall
 overloaded endpoint is asked again); `miner.py` rows carry `camera_id` and the full Cosmos
 reasoning, and `mine()` takes an optional `on_progress`; `config.py` accepts an already exported
 environment when `/config` is absent.
+
+### Live run on the VM (2026-10-02, about 2:00 PM PDT)
+
+- CLI `mine "forklift near a person" --groups warehouse --verify 20 --export`: 19 confirmed, coverage
+  table, LLM gap report and plan, zip written to `exports/`. `labels.csv` has real labels.
+- Web UI, `pedestrian near a vehicle` on `pie_cam-3`: 26 searched, 20 verified, 16 confirmed,
+  4 rejected (real Cosmos NOs), about 50 s. Clips render and play inline (5 s each), labels and
+  reasoning shown, rejected strip, coverage table, gap report all correct.
+- Loop proposal, `pallet blocking an aisle` on warehouse (verify 10): 0 confirmed, the agent proposed
+  a prompt and two chunks. The re-ingest itself was NOT run: it needs Henri's yes.
+- `unzip` is not installed on the VM; use `python -m zipfile -l exports/<name>.zip` to list a zip.
+
+Still open: one real re-ingest iteration (and its timing), README screenshots.

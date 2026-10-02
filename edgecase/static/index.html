@@ -139,7 +139,9 @@ function renderCoverage(cov) {
   }
   box.append(t);
   for (const [name, key] of [["By action", "by_action"], ["By distance", "by_distance"]]) {
-    const parts = Object.entries(cov[key] || {}).map(([k, n]) => k + " ×" + n).join(",  ");
+    const short = s => s.length > 48 ? s.slice(0, 47) + "…" : s;
+    const all = Object.entries(cov[key] || {}).sort((a, b) => b[1] - a[1]);
+    const parts = all.slice(0, 5).map(([k, n]) => short(k) + " ×" + n).join(",  ") + (all.length > 5 ? ",  and " + (all.length - 5) + " more" : "");
     if (parts) box.append(el("p", name + ": " + parts));
   }
 }

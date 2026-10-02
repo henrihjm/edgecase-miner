@@ -98,6 +98,8 @@ class LLMClient:
             f"Dataset request: {request}\n"
             f"Confirmed-clip coverage: {json.dumps(coverage)[:3000]}\n"
             f"Empty cells: {empty_cells[:30]}\n"
+            "Indoor cameras (warehouse, smartspace) only ever have indoor lighting and no weather; "
+            "never ask for day, dusk, night or weather footage from them.\n"
             'Reply with ONLY JSON: {"gap_report": "<3 to 5 sentences naming the gaps that matter '
             'for training on this request>", "collection_plan": ["<3 to 5 concrete next-collection lines>"]}',
             max_tokens=600,
@@ -132,7 +134,8 @@ class LLMClient:
                     "for a general description of the scene (setting, all actors, objects, motion) so general "
                     "search still works, then ask explicitly for the fields this request needs: each actor's "
                     "action, distances between actors (contact, under 2 m, 2 to 5 m, over 5 m), lighting, "
-                    "weather and occlusion. Reply with the prompt text only."
+                    "weather and occlusion. It must name the specific objects and situation of the request "
+                    "so the captions mention them when present. Reply with the prompt text only."
                 )}],
                 max_tokens=400,
                 temperature=0.2,
@@ -140,6 +143,11 @@ class LLMClient:
         except Exception:
             text = ""
         if text and len(text) <= 800:
+            # Small models sometimes drop the request itself; make sure the captioner is asked about it.
+            focus = f" State explicitly whether the clip shows: {request[:150]}."
+            words = [w for w in re.findall(r"[a-z]{4,}", request.lower())]
+            if words and not all(w in text.lower() for w in words) and len(text) + len(focus) <= 800:
+                text += focus
             return {"prompt": text, "source": "llm"}
         return {
             "prompt": (
