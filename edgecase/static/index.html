@@ -96,9 +96,10 @@ async function loadCameras() {
   try {
     const { cameras } = await (await api("/api/cameras")).json();
     for (const cam of cameras) {
+      const id = typeof cam === "string" ? cam : cam.id;   // /api/cameras may return ids or {id, name}
       const label = el("label"), box = el("input");
-      box.type = "checkbox"; box.value = cam;
-      label.append(box, " " + cam); $("groups").append(label);
+      box.type = "checkbox"; box.value = id;
+      label.append(box, " " + (cam.name && cam.name !== id ? cam.name + " (" + id + ")" : id)); $("groups").append(label);
     }
   } catch (e) { $("error").textContent = "Could not load camera groups: " + e.message; }
 }
