@@ -1,0 +1,240 @@
+---
+description: Edge-Case Miner build brief. Read fully before any work in this repo.
+alwaysApply: true
+---
+
+# Edge-Case Miner: build brief for Claude Code
+
+You are helping Henri build a hackathon project today at the VAST Builders Challenge
+(Real-Time Video Agents Hack, San Francisco). Submission deadline is 4:30 PM Pacific.
+Everything must be working and demoable by then. Read this whole file before doing anything.
+
+## What we are building
+
+**Edge-Case Miner**: an agent that turns hours of indexed video into a verified, labelled
+training dataset for physical AI from one plain-English request.
+
+A user types something like "pedestrian crossing in front of a turning car" or "forklift passing
+close to a person". The agent:
+
+1. Searches every camera group in the archive for candidate clips.
+2. Verifies each candidate by asking Cosmos Reason a yes/no question about the actual clip, and
+   extracts structured labels (actor, action, distance class, lighting, weather, occlusion).
+3. Scores clip quality (YOLO detections present, blur, event fully visible) and rejects bad clips.
+4. Writes a coverage report (what we found, grouped by camera group, lighting, action) and a gap
+   report ("nothing at night, nothing from the highway view") with a next-collection plan.
+5. Exports the confirmed clips as a dataset: manifest, labels, clips, dataset card.
+6. **The agentic part:** if too few clips pass, the agent writes a better ingestion prompt,
+   re-ingests the most promising videos through the pipeline with that prompt, then searches and
+   verifies again. The organisers' own guide says "the prompt decides what gets indexed"; this loop
+   puts that idea in the demo.
+
+Judging criteria are creativity, technical implementation and real-world impact. The judges include
+NVIDIA's Cosmos and video-analytics people and CoreWeave's physical AI lead. The pitch: robotics and
+autonomous-driving teams have hours of footage and no time to label it; one sentence in, a verified
+dataset out, plus the list of what they still need to collect.
+
+## The environment (read these first, do not guess)
+
+The stack is prebuilt and already running. We build on top of it. Before writing any code:
+
+1. `cd ~/vast-builders-challenge && git pull` (the pre-cloned repo may be behind).
+2. Read `BUILD_DAY.md`, `ARCHITECTURE_REFERENCE.md`, `.cursor/rules/build-day.mdc`, and every
+   `SKILL.md` under `.cursor/skills/retrieval/`, `.cursor/skills/ingest/reingest-videos/`, and
+   `.cursor/skills/gpu/` (including `gpu/README.md`). These are the API reference. They are written
+   for Cursor but the endpoints, request bodies and rules apply to you exactly the same way.
+3. Load the team config: `set -a && source /config/*.config && set +a`. There is exactly one
+   `/config/<team>.config` file. If it is missing, stop and ask Henri. Never print, log or commit
+   its values. To list variable names only: `env | cut -d= -f1 | sort`. Never run bare `env`.
+
+Key facts from the docs:
+
+- Backend API base: `$INGRESS_URL/api/v1`. Login with `POST /auth/login` using `$USERNAME` and
+  `$PASSWORD` to get a JWT. Every call uses `Authorization: Bearer <token>` except
+  `/videos/stream` and `/videos/playback-url`, which take `?token=`.
+- Search: `POST /search` with `query`, `top_k` (1 to 100), `min_similarity` (use 0.3 to 0.5),
+  `metadata_filters` (`camera_id`, `location`, `capture_type`), `tags`, `time_filter`. Response has
+  `results[]` (segment hits with `source`, `similarity_score`, `reasoning_content`, timing) and
+  `chunk_results[]` (grouped by parent `original_video` with `best_match_start_sec/end_sec`).
+- Q&A with evidence: `POST /agent/ask`, `POST /agent/search-and-answer`. Tools:
+  `GET /tools/segments?original_video=`, `GET /tools/segment?source=`,
+  `GET /tools/detections?source=`.
+- Per segment: `GET /videos/metadata?source=`, `GET /videos/detections?source=` (404 means no
+  YOLO sidecar, which is a signal, not an error), `GET /videos/stream?source=&token=` to download
+  the clip. Browse: `GET /videos/explore?scope=all&limit=100&offset=0`.
+- Filter values: `GET /metadata/schema`, `GET /metadata/values?field=camera_id`. Prompt presets:
+  `GET /metadata/ingest-config`.
+- Re-ingest: `POST /dashboard/reingest` with `original_video` (or `stream_id`), `chunk_count`,
+  and `custom_prompt` (max 800 characters; overrides `scenario`). Returns `job_id`; poll
+  `GET /dashboard/reingest/<job_id>` every 4 seconds until `status` is `completed`. Re-ingest
+  REPLACES the segment descriptions; it does not add to them. The row does not store which prompt
+  was used, so we keep our own log.
+- Routes that do not exist: `/reports`, `/alerts`, `/analytics`, `/videos/ask`, `/tags`,
+  `/locations`. Do not invent routes.
+- GPU models are directly callable with `Authorization: Bearer $GPU_BEARER_TOKEN`:
+  - Cosmos3-Reason at `$COSMOS3_REASON_URL/v1/chat/completions`, OpenAI-compatible. Video goes in
+    as a content part: `{"type":"video_url","video_url":{"url":"data:video/mp4;base64,..."}}`.
+    Get the model id from `GET /v1/models`. Empty `content` means the endpoint is overloaded.
+  - YOLO11 at `$YOLO_URL/v1/infer` with `{"video_base64": ..., "filename": ..., "include_frames": true}`.
+    Health is `GET /healthz` only.
+  - Cosmos Embed1 at `$COSMOS_EMBED1_URL/v1/embeddings` (256-dim; `request_type: "query"`).
+  - Canary-1B ASR at `$CANARY_1B_URL` (optional, not needed for this project).
+- Our own reasoning LLM runs on Weights & Biases serverless inference using `$WANDB_API_KEY`,
+  `$WANDB_TEAM`, `$WANDB_PROJECT`. It is OpenAI-compatible. Confirm the base URL, model names and
+  required headers from https://docs.wandb.ai/inference before the first call; do not assume.
+- Video corpus (camera_id in brackets): I-24 Nashville highway multi-cam [`i24_cam-1`], Toronto
+  dashcam drives [`pie_cam-3`, six long sets], neighbourhood street cam [`neighborhood_cam-1`, two
+  full days], SF street cams [`sf_streets_cam-1..4`, may still be ingesting], synthetic warehouse
+  [`sdg_warehouse_cam-2`, about 178 short clips], indoor smart spaces [`smartspace_cam-1`, about
+  102 clips]. Verify the live list with `/metadata/values?field=camera_id` on startup; it may have
+  changed.
+
+## Hard rules
+
+- Never commit or print secrets. Add `cache/`, `clips/`, `exports/`, `*.log`, `.env` to `.gitignore`.
+- Do not ingest video from the internet. Do not upload new footage. Only re-ingest what is indexed.
+- Do not modify, redeploy or rebuild the DataEngine pipeline or any shared infrastructure.
+- Use the skills' request formats before writing your own REST calls.
+- Ask Henri before: starting any re-ingest (it is shared team infrastructure and takes minutes),
+  deploying to Kubernetes, pushing to GitHub.
+- Re-ingest with `chunk_count` 1 or 2 only, and only on chunks whose current captions came closest.
+- Every re-ingest prompt must be a superset: a general scene description first, then the specific
+  fields we need. Never a narrow prompt that destroys general searchability.
+- Cosmos verification calls are bounded: at most 20 per query, concurrency 2, 60 second timeout,
+  one retry. Cache every answer by (segment source, question) on disk. If Cosmos returns empty
+  content, fall back to the stored `reasoning_content` and mark the verdict as "unverified".
+- Keep the project runnable at the end of every phase. Commit after each phase.
+- Web app or CLI only. No native apps (the VM is a browser session).
+
+## Project layout
+
+Create `edgecase/` in the repo root as a Python package. Keep dependencies small:
+`httpx` or `requests`, `fastapi`, `uvicorn`, `opencv-python-headless`, `numpy`, `pydantic`.
+`weave` is optional for logging; install it only if it installs cleanly in under a minute.
+
+```
+edgecase/
+  config.py       # loads env, resolves endpoints, nothing printed
+  vss_client.py   # login, search, segments, metadata, detections, stream download, reingest, poll
+  llm.py          # W&B inference client: plan query, write labels schema, write prompts, write reports
+  verify.py       # Cosmos3-Reason yes/no verification + label extraction on a clip, with cache
+  quality.py      # YOLO sidecar check, blur score (Laplacian variance on 3 frames), completeness
+  miner.py        # orchestration: request -> search -> verify -> score -> results
+  loop.py         # the agentic re-ingest loop (propose prompt, pick chunks, reingest, poll, retry)
+  report.py       # coverage matrix, gap report, next-collection plan
+  export.py       # manifest.json, labels.csv, clips/, README dataset card, zip
+  app.py          # FastAPI serving one HTML page + JSON endpoints
+  __main__.py     # CLI: python -m edgecase mine "..." --groups warehouse --top-k 40 --verify 20
+cache/            # verification answers, downloaded clips (gitignored)
+exports/          # datasets (gitignored)
+reingest_log.jsonl  # chunk, prompt, job_id, timestamps, before/after counts (committed; no secrets)
+```
+
+## Phases and time budget
+
+Work phase by phase. Do not start a later phase until the earlier one runs end to end.
+Tell Henri when each phase is done, in one or two sentences.
+
+### Phase 0: Setup and health (target: 20 minutes)
+
+- Pull the repo, read the docs listed above, source the config.
+- Log in, call `/dashboard/stats`, `/metadata/schema`, `/metadata/values?field=camera_id`,
+  `/metadata/ingest-config`. Print a short summary of what is indexed (counts per camera_id).
+- Health-check Cosmos (`/v1/models`), YOLO (`/healthz`), Embed1 (`/v1/models`).
+- Make one test call to W&B inference and one tiny text-only call to Cosmos ("Reply with OK").
+- Run three searches on the warehouse clips ("forklift near a person", "person in a walkway",
+  "pallet blocking an aisle"), print the top 5 `reasoning_content` for each so we learn what the
+  default ingestion prompt captured. Report what is and is not in the captions (lighting? distance?
+  actions?). This decides the re-ingest prompt later.
+- Scaffold the package, `.gitignore`, `requirements.txt`. Commit.
+
+### Phase 1: One clip end to end (target: done by 1:00 PM)
+
+- `miner.py`: take a request, have the LLM turn it into a search query plus optional camera filters,
+  run `/search` with `top_k` 40 and `min_similarity` 0.3 across all groups (or the groups asked for).
+- `verify.py`: for the top N candidates (default 20), download the segment via `/videos/stream`,
+  base64 it, call Cosmos3-Reason with a prompt of this shape:
+
+  ```
+  You are verifying a video clip for a training dataset.
+  Question: Does this clip show <event>?
+  Answer in this format:
+  <think>your reasoning</think>
+  <answer>YES or NO</answer>
+  <labels>{"actors": [...], "action": "...", "distance_class": "contact|under_2m|2_to_5m|over_5m|none",
+  "lighting": "day|dusk|night|indoor", "weather": "clear|rain|snow|fog|unknown",
+  "occlusion": "none|partial|heavy", "event_fully_visible": true|false}</labels>
+  ```
+
+  Parse all three blocks. Temperature 0, max_tokens around 400. Cache the result.
+- `quality.py`: `/videos/detections` for the sidecar (count of relevant classes; 404 lowers the
+  score), blur score from 3 sampled frames with OpenCV, `event_fully_visible` from the labels.
+  Produce a 0 to 1 quality score and a keep/reject decision with a reason.
+- CLI prints a table: source, similarity, verdict, quality, reason, one-line Cosmos reasoning.
+- Test on the warehouse group first (short clips, high signal), then on `pie_cam-3` with a
+  pedestrian request. Commit.
+
+### Phase 2: Coverage, gaps, export (target: 2:15 PM)
+
+- `report.py`: coverage matrix of confirmed clips by camera group x lighting x action (and
+  distance class). Have the LLM write a short gap report naming the empty cells that matter for the
+  request, and a next-collection plan (three to five concrete lines).
+- `export.py`: `exports/<slug>/manifest.json` (per clip: source URI, original_video, start and end
+  seconds, labels, verdict and reasoning, quality scores, detections summary, similarity),
+  `labels.csv`, `clips/*.mp4`, `README.md` dataset card (request, counts, coverage table, gap
+  report, how it was produced, which models). Zip it.
+- Commit.
+
+### Phase 3: The agentic re-ingest loop (target: 3:00 PM)
+
+- `loop.py`: if confirmed clips < target (default 10) after Phase 1:
+  1. The LLM reads the request, the near-miss candidates' captions, and the current coverage, and
+     proposes a superset ingestion prompt under 800 characters (general description first, then the
+     specific fields the request needs: actions, distances, lighting, actors).
+  2. Pick the one or two chunks (`original_video`) whose candidates scored highest but failed or
+     were unverified. Show Henri the prompt and the chunks and wait for a yes.
+  3. `POST /dashboard/reingest` with `chunk_count` 1, poll until completed, append to
+     `reingest_log.jsonl` with before counts.
+  4. Search and verify again, append after counts. At most 2 iterations.
+- Measure how long one iteration takes. If it is reliably under 3 minutes, it can be run live in
+  the demo; otherwise we record it. Tell Henri the number.
+- Commit.
+
+### Phase 4: Web UI (target: 3:30 PM)
+
+- `app.py`: one HTML page served by FastAPI. Query box and group checkboxes. A run shows: progress
+  (searched / verified / confirmed / rejected), a grid of confirmed clips with inline playback via
+  `/videos/stream?source=&token=` proxied through our backend so the token is never in the page
+  source, each with its labels and Cosmos reasoning; a separate "rejected" strip showing why (the
+  rejection proves verification is real); the coverage heatmap; the gap report; an Export button;
+  and the loop log (prompt proposed, chunks re-ingested, before and after counts).
+- Keep the design plain and legible on a projector: large type, high contrast, no clutter.
+- Optional only if everything above works: deploy with the organisers' `deployment/deploy-app-no-registry`
+  skill at `/app`. Ask Henri first. A local `uvicorn` run is fine for the demo.
+
+### Phase 5: Demo and submission (start no later than 3:30 PM)
+
+- Write `README.md` at repo root: what it does, who it is for, architecture (search -> verify ->
+  score -> report -> export, plus the re-ingest loop), which models and skills were used, how to
+  run it, screenshots.
+- Prepare a demo script for a two-minute walkthrough: one request, confirmed and rejected clips,
+  coverage and gaps, export, then the loop (live or recorded).
+- Follow `.cursor/skills/submission/SKILL.md` to draft `SUBMISSION.md` (description under 40 words,
+  stack list, code link, live link if any). No personal details in that file.
+- Ask Henri before pushing to the public GitHub repo. Make sure no secrets are in the history.
+
+## How to work with Henri today
+
+- He is a founder who builds with AI coding tools; explain decisions briefly and move on.
+- Prefer working code over options. When a choice is small, pick one and say which.
+- When something fails against the shared infrastructure (empty Cosmos content, slow search,
+  re-ingest stuck), say so plainly and use the fallback instead of retrying in a loop.
+- Keep a running `NOTES.md` with what works, what is flaky, and measured timings (search latency,
+  Cosmos verification per clip, re-ingest per chunk). Those numbers go into the demo.
+- If you get stuck on the environment, the organisers' `ask-cosmos` skill prepares a help post; run
+  it and give Henri the text to post in the Cosmos Community.
+
+## Kickoff
+
+Start with Phase 0 now. Report the indexed counts per camera and what the default captions do and
+do not contain, then propose the exact first request we test in Phase 1.

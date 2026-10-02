@@ -48,3 +48,11 @@ verify-vm.sh
 
 # --- live screen ---
 screen/
+cache/
+clips/
+exports/
+*.log
+.env
+__pycache__/
+*.pyc
+.venv/
