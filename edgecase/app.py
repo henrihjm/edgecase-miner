@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from . import loop, stills
+from . import loop, stills, voice
 from .config import Settings, load_settings
 from .export import export_dataset
 from .llm import LLMClient
@@ -22,6 +22,7 @@ from .report import build_report, counts, status
 from .vss_client import VSSClient
 
 app = FastAPI(title="Edge-Case Miner")
+app.include_router(voice.router)
 STATIC = Path(__file__).parent / "static"
 RUNS: dict[str, dict[str, Any]] = {}
 
@@ -60,7 +61,7 @@ def _report(result) -> dict[str, Any]:
 
 # Friendly names for the page. Anything not listed falls back to the raw camera_id.
 CAMERA_NAMES: dict[str, dict[str, str]] = {
-    "sdg_warehouse_cam-2": {"name": "Warehouse", "place": "Synthetic, indoor"},
+    "sdg_warehouse_cam-2": {"name": "Warehouse", "place": "Indoor"},
     "pie_cam-3": {"name": "Toronto dashcam", "place": "Toronto"},
     "neighborhood_cam-1": {"name": "Neighbourhood", "place": "Street camera"},
     "i24_cam-1": {"name": "I-24 highway", "place": "Nashville"},

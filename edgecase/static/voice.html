@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Edge-Case Miner, voice guide</title>
+<style>
+  :root { --bg:#0e0f12; --fg:#f4f4f6; --muted:#9a9ca6; --line:#2a2c33; --ok:#4ade80; --bad:#f87171; --warn:#fbbf24; --accent:#60a5fa; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:28px 40px 80px; background:var(--bg); color:var(--fg); font:21px/1.45 system-ui, sans-serif; }
+  header { display:flex; justify-content:space-between; align-items:baseline; gap:16px; flex-wrap:wrap; }
+  h1 { font-size:26px; margin:0; font-weight:600; }
+  h1 span { color:var(--muted); font-weight:400; }
+  a { color:var(--accent); }
+  #say { font-size:34px; line-height:1.35; margin:36px 0 20px; min-height:3.6em; max-width:1100px; }
+  #say.speaking::after { content:" ▍"; color:var(--accent); animation:blink 1s infinite; }
+  @keyframes blink { 50% { opacity:0; } }
+  .row { display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
+  button { font:inherit; font-weight:600; padding:14px 26px; border:2px solid var(--fg); border-radius:999px; background:var(--fg); color:var(--bg); cursor:pointer; }
+  button.secondary { background:transparent; color:var(--fg); }
+  button:disabled { opacity:.4; cursor:default; }
+  #mic { width:96px; height:96px; border-radius:50%; font-size:40px; padding:0; display:grid; place-items:center; }
+  #mic.on { background:var(--bad); border-color:var(--bad); color:#fff; animation:pulse 1.2s infinite; }
+  @keyframes pulse { 50% { transform:scale(1.08); } }
+  #heard { font-size:28px; color:var(--accent); min-height:1.4em; }
+  input[type=text] { flex:1 1 520px; font:inherit; padding:12px 16px; border:2px solid var(--line); border-radius:12px; background:#15171c; color:var(--fg); }
+  .muted { color:var(--muted); font-size:17px; }
+  #counts { display:flex; gap:36px; flex-wrap:wrap; font-size:20px; margin:16px 0; }
+  #counts b { display:block; font-size:40px; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); } .warn { color:var(--warn); }
+  #hero { display:grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap:28px; align-items:start; }
+  #hero video { width:100%; border-radius:14px; background:#000; }
+  .tags { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+  .tags span { font-size:17px; border:1px solid var(--muted); border-radius:999px; padding:2px 12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px; }
+  .card { border:2px solid var(--line); border-radius:12px; padding:10px; font-size:16px; }
+  .card.confirmed { border-color:var(--ok); } .card.rejected { border-color:var(--bad); } .card.unverified { border-color:var(--warn); }
+  .card video { width:100%; border-radius:8px; background:#000; }
+  .card .reason { font-weight:600; margin-top:6px; }
+  h2 { font-size:22px; margin:36px 0 10px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+  pre { white-space:pre-wrap; background:#15171c; border:1px solid var(--line); padding:14px 16px; border-radius:12px; font-size:18px; line-height:1.5; }
+  ul { margin:8px 0; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Edge-Case Miner <span>voice guide</span></h1>
+  <a href="/">full dashboard</a>
+</header>
+
+<p id="say"></p>
+
+<section id="s-start" class="row">
+  <button id="start">Start</button>
+  <span class="muted">Turn the sound on. Uses Canary-1B on the stack for speech-to-text and your browser for speech.</span>
+</section>
+
+<section id="s-ask" hidden>
+  <div class="row">
+    <button id="mic" title="Hold to talk">🎤</button>
+    <div>
+      <div id="heard"></div>
+      <div id="mic-note" class="muted">Press the microphone, say the event in one sentence, press again to stop.</div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:18px">
+    <input id="typed" type="text" placeholder="…or type it: forklift passing close to a person" maxlength="300">
+    <button id="use-typed" class="secondary">Use this</button>
+  </div>
+  <div id="confirm" class="row" style="margin-top:18px" hidden>
+    <button id="go">Yes, mine this</button>
+    <button id="again" class="secondary">No, let me say it again</button>
+  </div>
+</section>
+
+<section id="s-run" hidden>
+  <div id="counts">
+    <div><b id="n-searched">0</b>searched</div>
+    <div><b id="n-verified">0</b>verified</div>
+    <div class="ok"><b id="n-confirmed">0</b>confirmed</div>
+    <div class="bad"><b id="n-rejected">0</b>rejected</div>
+    <div class="warn"><b id="n-unverified">0</b>unverified</div>
+  </div>
+  <div id="stage" class="muted"></div>
+</section>
+
+<section id="s-hero" hidden>
+  <h2>One example</h2>
+  <div id="hero"></div>
+</section>
+
+<section id="s-rest" hidden>
+  <h2>Everything found</h2>
+  <div id="rest" class="grid"></div>
+</section>
+
+<section id="s-gaps" hidden>
+  <h2>What is missing</h2>
+  <p id="gap"></p>
+  <ul id="plan"></ul>
+</section>
+
+<section id="s-improve" hidden>
+  <h2>How I'd improve the ingestion prompt</h2>
+  <p id="improve-note"></p>
+  <pre id="prompt"></pre>
+  <div id="chunks" class="muted"></div>
+  <div class="row" style="margin-top:14px">
+    <button id="approve" hidden>Approve and re-ingest</button>
+    <button id="export" class="secondary">Export dataset</button>
+    <button id="restart" class="secondary">New request</button>
+  </div>
+  <div id="loop-log"></div>
+</section>
+
+<p id="error" class="bad"></p>
+
+<script>
+const $ = id => document.getElementById(id);
+const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
+const show = ids => ["s-start","s-ask","s-run","s-hero","s-rest","s-gaps","s-improve"].forEach(s => $(s).hidden = !ids.includes(s));
+let runId = null, request = "", proposal = null;
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) { let d = r.statusText; try { d = (await r.json()).detail || d; } catch (e) {} throw new Error(typeof d === "string" ? d : JSON.stringify(d)); }
+  return r;
+}
+const post = (path, body) => api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+
+/* ---------- speech out: browser synthesis, captions always ---------- */
+function speak(text) {
+  $("say").textContent = text; $("say").classList.add("speaking");
+  return new Promise(resolve => {
+    const done = () => { $("say").classList.remove("speaking"); resolve(); };
+    if (!("speechSynthesis" in window)) return setTimeout(done, Math.max(1500, text.split(/\s+/).length * 330));
+    speechSynthesis.cancel();
+    // Chrome cuts long utterances; speak sentence by sentence.
+    const parts = text.match(/[^.!?]+[.!?]*/g) || [text];
+    let i = 0, guard = setTimeout(done, Math.max(2000, text.split(/\s+/).length * 450));
+    const next = () => {
+      if (i >= parts.length) { clearTimeout(guard); return done(); }
+      const u = new SpeechSynthesisUtterance(parts[i++].trim());
+      const v = speechSynthesis.getVoices().find(v => /^en/i.test(v.lang) && /Google|Samantha|Daniel|Natural/i.test(v.name)) || speechSynthesis.getVoices().find(v => /^en/i.test(v.lang));
+      if (v) u.voice = v;
+      u.rate = 1.02; u.onend = next; u.onerror = next;
+      speechSynthesis.speak(u);
+    };
+    next();
+  });
+}
+
+/* ---------- speech in: 16 kHz WAV -> /api/transcribe (Canary-1B), typed fallback ---------- */
+let rec = null;
+async function startRecording() {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+  const src = ctx.createMediaStreamSource(stream), proc = ctx.createScriptProcessor(4096, 1, 1), chunks = [];
+  proc.onaudioprocess = e => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  src.connect(proc); proc.connect(ctx.destination);
+  rec = { stop: async () => { proc.disconnect(); src.disconnect(); stream.getTracks().forEach(t => t.stop()); await ctx.close(); return wav(chunks, ctx.sampleRate); } };
+}
+function wav(chunks, rate) {
+  const n = chunks.reduce((a, c) => a + c.length, 0), buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  const str = (o, s) => [...s].forEach((ch, i) => v.setUint8(o + i, ch.charCodeAt(0)));
+  str(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); str(8, "WAVE"); str(12, "fmt "); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, "data"); v.setUint32(40, n * 2, true);
+  let o = 44;
+  for (const c of chunks) for (let i = 0; i < c.length; i++, o += 2) v.setInt16(o, Math.max(-1, Math.min(1, c[i])) * 0x7fff, true);
+  return new Blob([buf], { type: "audio/wav" });
+}
+let recTimer = null;
+$("mic").addEventListener("click", async () => {
+  if (!rec) {
+    try { await startRecording(); } catch (e) { $("mic-note").textContent = "No microphone available here. Type the request instead."; return; }
+    $("mic").classList.add("on"); $("heard").textContent = ""; $("mic-note").textContent = "Listening… press again when you are done.";
+    recTimer = setTimeout(() => $("mic").click(), 12000);
+    return;
+  }
+  clearTimeout(recTimer);
+  const blob = await rec.stop(); rec = null; $("mic").classList.remove("on");
+  $("mic-note").textContent = "Transcribing with Canary-1B…";
+  try {
+    const fd = new FormData(); fd.append("file", blob, "speech.wav");
+    const { text } = await (await api("/api/transcribe", { method: "POST", body: fd })).json();
+    heard(text);
+  } catch (e) { $("mic-note").textContent = "Could not transcribe (" + e.message + "). Type the request instead."; }
+});
+$("use-typed").addEventListener("click", () => { if ($("typed").value.trim().length >= 3) heard($("typed").value.trim()); });
+$("typed").addEventListener("keydown", e => { if (e.key === "Enter") $("use-typed").click(); });
+
+async function heard(text) {
+  request = text; $("heard").textContent = "“" + text + "”"; $("mic-note").textContent = "";
+  $("confirm").hidden = false;
+  await speak("I heard: " + text + ". Shall I mine the archive for that?");
+}
+$("again").addEventListener("click", async () => { $("confirm").hidden = true; $("heard").textContent = ""; await speak("Go ahead, say it again."); });
+
+/* ---------- the guided flow ---------- */
+$("start").addEventListener("click", async () => {
+  show(["s-ask"]);
+  await speak("Hi, I am Edge-Case Miner. Give me one sentence describing the event you need training data for, like: forklift passing close to a person. " +
+    "I will search hours of indexed video, show every candidate to Cosmos Reason to check that the event really happens, label it, score its quality, " +
+    "and build a dataset with a report of what is still missing. What kind of dataset are you looking for?");
+});
+
+$("go").addEventListener("click", async () => {
+  $("confirm").hidden = true; $("error").textContent = "";
+  try { runId = (await (await post("/api/mine", { request })).json()).id; } catch (e) { $("error").textContent = e.message; return; }
+  show(["s-run"]);
+  speak("Searching every camera group, then verifying each candidate with Cosmos Reason. This takes about a minute.");
+  let run;
+  while (true) {
+    await new Promise(r => setTimeout(r, 1500));
+    try { run = await (await api("/api/runs/" + runId)).json(); } catch (e) { $("error").textContent = e.message; return; }
+    const n = run.counts || {};
+    for (const k of ["searched","verified","confirmed","rejected","unverified"]) $("n-" + k).textContent = n[k] || 0;
+    $("stage").textContent = run.stage + (run.plan ? "   query: " + run.plan.query : "");
+    if (run.error) { $("error").textContent = run.error; return; }
+    if (run.stage === "done") break;
+  }
+  await present(run);
+});
+
+const card = c => {
+  const d = el("div", null, "card " + c.status);
+  const v = el("video"); v.controls = true; v.muted = true; v.preload = "metadata"; v.src = "/api/clip/" + c.clip_id; d.append(v);
+  d.append(el("div", (c.camera || c.camera_id) + "  ·  similarity " + c.similarity, "muted"));
+  d.append(el("div", c.status === "confirmed" ? "confirmed" : c.reason, "reason"));
+  return d;
+};
+const sentences = (t, n) => ((t || "").match(/[^.!?]+[.!?]*/g) || []).slice(0, n).join(" ").trim();
+
+async function present(run) {
+  const confirmed = run.candidates.filter(c => c.status === "confirmed"), rest = run.candidates.filter(c => c.status !== "candidate");
+  const n = run.counts;
+  if (!confirmed.length) {
+    await speak("I checked " + n.verified + " candidates and could not confirm a single one for this request. That is itself the finding. Let me show you what is missing and how I would change the indexing.");
+  } else {
+    const c = confirmed[0], L = c.labels || {};
+    show(["s-run","s-hero"]);
+    const h = $("hero"); h.replaceChildren();
+    const v = el("video"); v.src = "/api/clip/" + c.clip_id; v.controls = true; v.muted = true; v.autoplay = true; v.loop = true; h.append(v);
+    const side = el("div");
+    side.append(el("div", (c.camera || c.camera_id) + "  ·  similarity " + c.similarity + "  ·  quality " + (c.quality && c.quality.score), "muted"));
+    const tags = el("div", null, "tags");
+    for (const k of ["action","distance_class","lighting","weather","occlusion"]) if (L[k]) tags.append(el("span", k.replace("_class","") + ": " + L[k]));
+    side.append(tags, el("p", c.reasoning || ""));
+    h.append(side);
+    await speak("Here is one example from " + (c.camera || c.camera_id) + ". Cosmos Reason watched the clip and said: " + sentences(c.reasoning, 2) +
+      " It labelled it " + [L.action, L.distance_class && ("distance " + L.distance_class.replace(/_/g, " ")), L.lighting].filter(Boolean).join(", ") + ".");
+    show(["s-run","s-hero","s-rest"]);
+    $("rest").replaceChildren(...rest.slice(0, 40).map(card));
+    await speak("Altogether I confirmed " + n.confirmed + " clips and rejected " + n.rejected + (n.unverified ? ", with " + n.unverified + " unverified" : "") +
+      ". The rejected ones are where Cosmos said the event is not there, or the clip quality was too low. Every clip here was checked, not just matched.");
+  }
+  const rep = run.report || {};
+  const vis = ["s-run"]; if (confirmed.length) vis.push("s-hero", "s-rest"); vis.push("s-gaps"); show(vis);
+  $("gap").textContent = rep.gap_report || ""; $("plan").replaceChildren(...(rep.collection_plan || []).map(l => el("li", l)));
+  await speak("What is missing: " + sentences(rep.gap_report, 2) + " To close the gaps I would " + (rep.collection_plan || []).slice(0, 2).join(", and ").toLowerCase());
+  await improve(run);
+}
+
+async function improve(run) {
+  $("s-improve").hidden = false;
+  $("improve-note").textContent = "The ingestion prompt decides what gets written into the captions, and the captions decide what search can find.";
+  await speak("Now, how to find more. The ingestion prompt decides what the captioner writes, and the captions decide what search can find. " +
+    "So I rewrite the prompt: a general description of the scene first, so general search keeps working, then the specific things this request needs, " +
+    "distances, lighting, and the event itself. Then I re-index the chunks that came closest and search again.");
+  try { proposal = await (await post("/api/runs/" + runId + "/loop/propose")).json(); } catch (e) { $("error").textContent = e.message; return; }
+  $("prompt").textContent = proposal.prompt;
+  $("chunks").textContent = proposal.chunks.length ? "Chunks to re-ingest: " + proposal.chunks.map(c => c.split("/").pop()).join(", ") : "No near-miss chunk to re-ingest.";
+  $("approve").hidden = !(run.needs_loop && proposal.chunks.length);
+  await speak("Here is the prompt I would use. " + (run.needs_loop && proposal.chunks.length
+    ? "Approve it and I will re-ingest " + proposal.chunks.length + " chunk" + (proposal.chunks.length > 1 ? "s" : "") + " and search again. It takes about a minute and a half."
+    : "The target of " + run.target + " confirmed clips is already reached, so no re-ingest is needed this time."));
+}
+
+$("approve").addEventListener("click", async () => {
+  $("approve").hidden = true;
+  try { await post("/api/runs/" + runId + "/loop/approve", { prompt: proposal.prompt, chunks: proposal.chunks }); } catch (e) { $("error").textContent = e.message; return; }
+  speak("Re-ingesting with the new prompt, then searching and verifying again.");
+  let run;
+  while (true) {
+    await new Promise(r => setTimeout(r, 2000));
+    run = await (await api("/api/runs/" + runId)).json();
+    const it = (run.loop.iterations || []).slice(-1)[0] || {};
+    $("loop-log").replaceChildren(el("p", "Iteration: " + (it.status || "") + "  " + (it.jobs || []).map(j => j.progress).join("; ")));
+    if (run.stage === "done") break;
+  }
+  const it = run.loop.iterations.slice(-1)[0];
+  const n = run.counts; for (const k of ["searched","verified","confirmed","rejected","unverified"]) $("n-" + k).textContent = n[k] || 0;
+  $("loop-log").replaceChildren(el("p", "Confirmed before " + it.before.confirmed + ", after " + (it.after ? it.after.confirmed : "?") + " (" + it.seconds + " s)"));
+  await speak("Done in " + Math.round(it.seconds) + " seconds. Confirmed clips before: " + it.before.confirmed + ". After: " + (it.after ? it.after.confirmed : "unknown") + ".");
+  await present(run);
+});
+
+$("export").addEventListener("click", async () => {
+  try { const r = await post("/api/runs/" + runId + "/export"); const a = el("a"); a.href = URL.createObjectURL(await r.blob()); a.download = "edgecase-" + runId + ".zip"; a.click();
+    speak("Exported: manifest, labels, clips and a dataset card."); } catch (e) { $("error").textContent = e.message; }
+});
+$("restart").addEventListener("click", () => { if (window.speechSynthesis) speechSynthesis.cancel(); runId = null; $("heard").textContent = ""; $("typed").value = ""; show(["s-ask"]); speak("What dataset are you looking for next?"); });
+if ("speechSynthesis" in window) speechSynthesis.getVoices();
+</script>
+</body>
+</html>
