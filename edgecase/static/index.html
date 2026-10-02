@@ -710,7 +710,7 @@ async function poll() {
   if (key === lastKey) return; lastKey = key;
   if (reindexing) renderLoop(run);
   else renderGrid(run);
-  $("run").classList.toggle("done", done);
+  $("run").classList.toggle("done", done || reindexing);   // the sidebar card carries re-index progress; keep the header folded
   if (done) {
     $("side").hidden = false;
     if (run.report) renderReport(run.report);
