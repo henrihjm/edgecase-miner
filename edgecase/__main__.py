@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import time
 
 from .config import load_settings
 from .llm import LLMClient
+from .miner import mine
 from .vss_client import VSSClient
 
 
@@ -47,7 +47,6 @@ def cmd_health(_: argparse.Namespace) -> int:
         print(f"yolo healthz: ok={y.get('ok')} loaded={y.get('model_loaded')}")
         r = c.get(f"{settings.cosmos_embed1_url}/v1/models")
         print(f"embed1 models: {r.status_code} id={r.json()['data'][0]['id']}")
-        # tiny cosmos text
         model = c.get(f"{settings.cosmos3_reason_url}/v1/models").json()["data"][0][
             "id"
         ]
@@ -55,7 +54,9 @@ def cmd_health(_: argparse.Namespace) -> int:
             f"{settings.cosmos3_reason_url}/v1/chat/completions",
             json={
                 "model": model,
-                "messages": [{"role": "user", "content": "Reply with the single word: OK"}],
+                "messages": [
+                    {"role": "user", "content": "Reply with the single word: OK"}
+                ],
                 "max_tokens": 16,
                 "temperature": 0,
             },
@@ -81,9 +82,60 @@ def cmd_health(_: argparse.Namespace) -> int:
     return 0
 
 
+def _short_source(source: str, width: int = 42) -> str:
+    name = source.rsplit("/", 1)[-1]
+    if len(name) <= width:
+        return name
+    return name[: width - 3] + "..."
+
+
 def cmd_mine(args: argparse.Namespace) -> int:
-    print("Phase 1 miner not wired yet. Request was:", args.request)
-    return 2
+    settings = load_settings()
+    print(f"mining: {args.request!r}")
+    print(
+        f"groups={args.groups or ['all']} top_k={args.top_k} verify={args.verify}"
+    )
+    t0 = time.time()
+    result = mine(
+        args.request,
+        groups=args.groups,
+        top_k=args.top_k,
+        verify_n=args.verify,
+        settings=settings,
+    )
+    wall = time.time() - t0
+
+    print(f"search query: {result.query!r}")
+    print(f"cameras: {result.camera_ids or ['(all)']}")
+    print(
+        f"timings: search={result.timings.get('search_s')}s "
+        f"verify_wall={result.timings.get('verify_wall_s')}s "
+        f"~{result.timings.get('verify_per_clip_s')}s/clip "
+        f"total={wall:.1f}s"
+    )
+    print(
+        f"confirmed={len(result.confirmed)} rejected={len(result.rejected)} "
+        f"checked={len(result.candidates)}"
+    )
+    print()
+    header = (
+        f"{'KEEP':4} {'SIM':>5} {'VER':>10} {'Q':>5}  "
+        f"{'SOURCE':42}  REASON / THINK"
+    )
+    print(header)
+    print("-" * len(header))
+    for row in result.candidates:
+        keep = "YES" if row.get("keep") else "no"
+        sim = f"{float(row.get('similarity') or 0):.3f}"
+        ver = str(row.get("verdict") or "?")
+        q = f"{float(row.get('quality') or 0):.2f}"
+        src = _short_source(row.get("source") or "")
+        reason = (row.get("reason") or "")[:40]
+        think = (row.get("think") or "")[:70]
+        print(f"{keep:4} {sim:>5} {ver:>10} {q:>5}  {src:42}  {reason}")
+        print(f"{'':4} {'':5} {'':10} {'':5}  {'':42}  {think}")
+
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:

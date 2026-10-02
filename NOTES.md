@@ -58,8 +58,20 @@ High search signal already; short clips; good for end-to-end verify/quality befo
 - `llm_top_n` must be **>= 1** if sent (0 → 422)
 - Do not re-ingest without Henri's yes
 
-### Timings to fill
+### Timings
 
-- Search warehouse top5: ~2.5–3s
-- Cosmos verify / clip: TBD Phase 1
+- Search warehouse top5: ~2.5–3s; Phase 1 search top40 warehouse: ~7–11s
+- Cosmos verify / clip: **~2.5s** wall amortized at concurrency 2 (warehouse short clips); full 20-clip pass ~50s verify wall / ~58s total
 - Re-ingest / chunk: TBD Phase 3
+
+### Phase 1 warehouse run (`forklift near a person`, verify=20)
+
+- confirmed **19** / rejected **1** (1× cosmos unverified empty/partial)
+- Labels look good: actors, action, `distance_class=under_2m`, lighting=indoor, event_fully_visible
+- Quality scores 0.75–1.00; one kept with blur caveat (laplacian≈50)
+
+### Phase 1 pie_cam-3 run (`pedestrian near a vehicle`, verify=8)
+
+- confirmed **6** / rejected **2** (both cosmos **NO** — good demo of real verification)
+- Search similarities lower (0.14–0.20) than warehouse; Cosmos still decisive
+- verify_wall ~24s for 8 clips (~3s/clip amortized)
