@@ -50,6 +50,8 @@
   const note = t => { $("eca-note").textContent = t; };
   const state = t => { $("eca-state").textContent = t; };
 
+  let runId = null, busy = false;
+
   /* ---------- speech out ---------- */
   let speaking = null;
   function speak(text) {
@@ -60,15 +62,20 @@
       if (!synth) return setTimeout(done, Math.max(1500, text.split(/\s+/).length * 330));
       synth.cancel();
       const parts = text.match(/[^.!?]+[.!?]*/g) || [text];
-      let i = 0; const guard = setTimeout(done, Math.max(2000, text.split(/\s+/).length * 450));
+      let i = 0, started = false, cancelled = false;
+      const words = text.split(/\s+/).length, guard = setTimeout(done, Math.max(2000, words * 450));
+      speak.cancel = () => { cancelled = true; clearTimeout(guard); synth.cancel(); done(); };
       const next = () => {
+        if (cancelled) return;
         if (i >= parts.length) { clearTimeout(guard); return done(); }
         const u = new SpeechSynthesisUtterance(parts[i++].trim());
         const vs = synth.getVoices();
         u.voice = vs.find(v => /^en/i.test(v.lang) && /Google|Samantha|Daniel|Natural/i.test(v.name)) || vs.find(v => /^en/i.test(v.lang)) || null;
-        u.rate = 1.02; u.onend = next; u.onerror = next; synth.speak(u);
+        u.rate = 1.02; u.onstart = () => { started = true; }; u.onend = next; u.onerror = next; synth.speak(u);
       };
       next();
+      // No audio device (e.g. a remote desktop): the utterance never starts. Fall back to caption reading time.
+      setTimeout(() => { if (!started && !cancelled) { synth.cancel(); clearTimeout(guard); setTimeout(done, Math.max(800, words * 260 - 1500)); } }, 1500);
     }));
   }
 
@@ -118,15 +125,22 @@
   }
 
   /* ---------- getting an answer: voice, typed box, or yes/no buttons ---------- */
-  let pending = null;   // {resolve}
+  let pending = null, early = null;   // early: typed while the assistant was still talking
   function waitForAnswer(yesNo) {
+    if (early) { const v = early; early = null; return Promise.resolve(v); }
     $("eca-yn").classList.toggle("on", !!yesNo);
     return new Promise(resolve => {
       pending = { resolve: v => { pending = null; $("eca-yn").classList.remove("on"); resolve(v); } };
       listenOnce().then(t => { if (t && pending) pending.resolve(t); });
     });
   }
-  $("eca-typed").addEventListener("keydown", e => { if (e.key === "Enter" && $("eca-typed").value.trim()) { const v = $("eca-typed").value.trim(); $("eca-typed").value = ""; if (pending) pending.resolve(v); else newRequest(v); } });
+  $("eca-typed").addEventListener("keydown", e => {
+    if (e.key !== "Enter" || !$("eca-typed").value.trim()) return;
+    const v = $("eca-typed").value.trim(); $("eca-typed").value = "";
+    if (pending) return pending.resolve(v);
+    if (busy) { early = v; if (speak.cancel) speak.cancel(); return; }   // answer arrived mid-sentence
+    newRequest(v);
+  });
   $("eca-yes").addEventListener("click", () => pending && pending.resolve("yes"));
   $("eca-no").addEventListener("click", () => pending && pending.resolve("no"));
   $("eca-mic").addEventListener("click", async () => {
@@ -172,7 +186,6 @@
   };
 
   /* ---------- the conversation ---------- */
-  let runId = null, busy = false;
   async function start() {
     $("eca-start").hidden = true; $("eca-mic").hidden = false; $("eca-typed").hidden = false; state("ready");
     await speak("Hi, I am Edge-Case Miner. Tell me in one sentence the event you need training data for, like: forklift passing close to a person. " +
