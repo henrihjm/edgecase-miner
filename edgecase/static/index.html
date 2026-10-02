@@ -5,85 +5,466 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Edge-Case Miner</title>
 <style>
-  :root { --bg:#fff; --fg:#111; --muted:#555; --line:#ccc; --ok:#0a6b2d; --bad:#a11212; --warn:#8a5a00; --accent:#0b4fbf; }
+  :root {
+    --ink: #1d1d1f; --ink-2: #6e6e73; --ink-3: #aeaeb2;
+    --line: #e8e8ed; --surface: #f5f5f7; --bg: #ffffff;
+    --blue: #0071e3; --blue-ink: #0066cc; --green: #34c759; --red: #ff3b30; --orange: #ff9f0a;
+    --r-xl: 28px; --r-lg: 18px; --r-md: 12px;
+    --shadow-1: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.06);
+    --shadow-2: 0 2px 6px rgba(0,0,0,.06), 0 24px 60px rgba(0,0,0,.14);
+    --ease: cubic-bezier(.2,.8,.2,1);
+  }
   * { box-sizing: border-box; }
-  body { margin:0; padding:24px 32px 64px; background:var(--bg); color:var(--fg); font:20px/1.45 system-ui, sans-serif; }
-  h1 { font-size:36px; margin:0 0 4px; }
-  h2 { font-size:26px; margin:40px 0 12px; border-bottom:2px solid var(--fg); padding-bottom:4px; }
-  p.sub { color:var(--muted); margin:0 0 20px; }
-  form { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
-  input[type=text] { flex:1 1 480px; font:inherit; padding:12px 14px; border:2px solid var(--fg); border-radius:6px; }
-  button { font:inherit; font-weight:600; padding:12px 20px; border:2px solid var(--fg); border-radius:6px; background:var(--fg); color:#fff; cursor:pointer; }
-  button.secondary { background:#fff; color:var(--fg); }
-  button:disabled { opacity:.45; cursor:default; }
-  #groups { display:flex; gap:16px; flex-wrap:wrap; margin-top:12px; font-size:18px; }
-  #progress { display:flex; gap:28px; flex-wrap:wrap; margin-top:20px; font-size:22px; }
-  #progress b { font-size:34px; display:block; }
-  .ok { color:var(--ok); } .bad { color:var(--bad); } .warn { color:var(--warn); }
-  #stage { color:var(--accent); font-weight:600; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:18px; }
-  .card { border:2px solid var(--line); border-radius:8px; padding:12px; }
-  .card.confirmed { border-color:var(--ok); } .card.rejected { border-color:var(--bad); } .card.unverified { border-color:var(--warn); }
-  .card video { width:100%; background:#000; border-radius:4px; }
-  .card .meta { font-size:16px; color:var(--muted); margin:6px 0; }
-  .card .reason { font-weight:600; margin:6px 0; }
-  .card .why { font-size:17px; margin:6px 0 0; }
-  .tags { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
-  .tags span { font-size:15px; border:1px solid var(--fg); border-radius:999px; padding:1px 10px; }
-  table { border-collapse:collapse; }
-  th, td { border:1px solid var(--line); padding:8px 16px; text-align:center; }
-  th:first-child, td:first-child { text-align:left; }
-  td.zero { background:#f6dada; color:var(--bad); font-weight:600; }
-  td.some { background:#d9f0df; color:var(--ok); font-weight:600; }
-  pre { white-space:pre-wrap; background:#f3f3f3; padding:12px; border-radius:6px; font-size:17px; }
-  textarea { width:100%; font:17px/1.4 ui-monospace, monospace; padding:10px; border:2px solid var(--fg); border-radius:6px; }
-  .error { color:var(--bad); font-weight:600; }
-  [hidden] { display:none !important; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 17px/1.47 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Inter, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; border: 0; background: none; padding: 0; }
+  [hidden] { display: none !important; }
+  svg.i { width: 1em; height: 1em; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
+  .wrap { width: min(1240px, calc(100% - 64px)); margin: 0 auto; }
+  @media (max-width: 640px) { .wrap { width: calc(100% - 32px); } }
+  .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); }
+
+  /* ---- top bar ---- */
+  .bar { position: sticky; top: 0; z-index: 20; height: 52px; background: rgba(255,255,255,.78);
+         -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); border-bottom: 1px solid rgba(0,0,0,.06); }
+  .bar .wrap { height: 100%; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .brand { font-weight: 600; font-size: 16px; letter-spacing: -.01em; display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+  .brand i { width: 22px; height: 22px; border-radius: 7px; background: var(--ink); display: inline-grid; place-items: center; }
+  .brand i::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+  .bar-right { display: flex; align-items: center; gap: 14px; }
+  .stage { display: none; align-items: center; gap: 8px; font-size: 14px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 42vw; }
+  .stage span:last-child { overflow: hidden; text-overflow: ellipsis; }
+  .stage.on { display: flex; }
+  .stage .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); animation: pulse 1.4s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1);} 50% { opacity: .45; transform: scale(.8);} }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px; border-radius: 980px; font-size: 15px; font-weight: 500;
+         transition: transform .15s var(--ease), background .15s, opacity .15s; white-space: nowrap; }
+  .btn:active { transform: scale(.97); }
+  .btn.primary { background: var(--blue); color: #fff; } .btn.primary:hover { background: var(--blue-ink); }
+  .btn.dark { background: var(--ink); color: #fff; } .btn.dark:hover { background: #000; }
+  .btn.quiet { background: var(--surface); color: var(--ink); } .btn.quiet:hover { background: #ebebf0; }
+  .btn.ghost { color: var(--blue); padding: 0 6px; } .btn.ghost:hover { text-decoration: underline; }
+  .btn:disabled { opacity: .35; pointer-events: none; }
+  .btn.lg { height: 50px; padding: 0 26px; font-size: 17px; }
+
+  /* ---- hero ---- */
+  #hero { padding: clamp(28px, 9vh, 90px) 0 clamp(20px, 5vh, 56px); text-align: center; }
+  #hero.compact { display: none; }
+  h1 { font-size: clamp(36px, 6.2vw, 68px); line-height: 1.02; letter-spacing: -.03em; font-weight: 600; margin: 0 0 clamp(10px, 2vh, 20px); }
+  h1 .soft { color: var(--ink-3); }
+  .sub { font-size: clamp(17px, 2vw, 22px); line-height: 1.3; letter-spacing: -.012em; color: var(--ink-2); margin: 0 auto clamp(22px, 5vh, 52px); max-width: 560px; }
+  .search { position: relative; max-width: 720px; margin: 0 auto; }
+  .search input { width: 100%; height: clamp(56px, 7vh, 66px); padding: 0 140px 0 28px; border: 1px solid var(--line); border-radius: 980px; background: #fff; font-size: 20px; letter-spacing: -.01em;
+                  box-shadow: var(--shadow-1); outline: none; transition: box-shadow .2s, border-color .2s; }
+  .search input::placeholder { color: var(--ink-3); }
+  .search input:focus { border-color: rgba(0,113,227,.6); box-shadow: 0 0 0 4px rgba(0,113,227,.15), var(--shadow-1); }
+  .search .btn { position: absolute; right: 8px; top: 8px; height: calc(100% - 16px); padding: 0 22px; font-size: 17px; }
+  .examples { display: flex; gap: 2px 20px; justify-content: center; flex-wrap: wrap; margin: clamp(14px, 2.5vh, 22px) auto 0; max-width: 760px; }
+  .examples .eyebrow { width: 100%; margin-bottom: 2px; }
+  .examples button { font-size: 14px; color: var(--ink-2); padding: 3px 0; border-bottom: 1px solid transparent; transition: color .15s, border-color .15s; }
+  .examples button:hover { color: var(--ink); border-color: var(--ink); }
+
+  .scopes { margin: clamp(26px, 6vh, 64px) auto 0; }
+  .scopes .eyebrow { margin-bottom: 12px; }
+  .sources { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; max-width: 820px; margin: 0 auto; }
+  .src { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px 0 11px; border-radius: 980px; background: var(--surface);
+         transition: background .15s, color .15s, transform .15s var(--ease); }
+  .src:hover { background: #ebebf0; } .src:active { transform: scale(.97); }
+  .src svg.i { font-size: 18px; stroke-width: 1.6; color: var(--ink); }
+  .src b { font-size: 14px; font-weight: 500; letter-spacing: -.01em; white-space: nowrap; }
+  .src small { display: none; }
+  .src .syn { font-size: 10px; font-weight: 700; letter-spacing: .08em; color: var(--ink-3); }
+  .src.on { background: var(--ink); color: #fff; }
+  .src.on svg.i, .src.on .syn { color: rgba(255,255,255,.8); }
+
+  /* ---- run header ---- */
+  #run { padding: 36px 0 0; }
+  .runbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+  .request { font-size: clamp(26px, 3vw, 36px); letter-spacing: -.022em; font-weight: 600; line-height: 1.15; margin: 0; max-width: 820px; }
+  .request .q { color: var(--ink-3); font-weight: 500; }
+  .meta { color: var(--ink-2); font-size: 15px; margin: 8px 0 0; display: flex; gap: 8px 14px; flex-wrap: wrap; align-items: center; }
+  .meta .cam { display: inline-flex; align-items: center; gap: 6px; }
+
+  /* process */
+  .process { margin: 34px 0 0; }
+  .track { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .seg .lab { font-size: 13px; font-weight: 600; color: var(--ink-3); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; transition: color .3s; }
+  .seg .lab svg.i { font-size: 14px; opacity: 0; transition: opacity .3s; }
+  .seg .bar-t { height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; position: relative; }
+  .seg .bar-t i { display: block; height: 100%; width: 0; background: var(--blue); border-radius: 3px; transition: width .6s var(--ease); }
+  .seg.done .lab { color: var(--ink); } .seg.done .lab svg.i { opacity: 1; } .seg.done .bar-t i { width: 100%; background: var(--ink); }
+  .seg.active .lab { color: var(--blue); }
+  .seg.active.indeterminate .bar-t i { width: 40%; animation: slide 1.4s var(--ease) infinite; }
+  @keyframes slide { from { transform: translateX(-100%);} to { transform: translateX(260%);} }
+  .now { margin-top: 22px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+  .now h2 { font-size: clamp(24px, 2.6vw, 32px); letter-spacing: -.02em; margin: 0; line-height: 1.15; }
+  .now h2 .n { color: var(--blue); font-variant-numeric: tabular-nums; }
+  .now p { margin: 6px 0 0; color: var(--ink-2); font-size: 15px; max-width: 640px; }
+  .now .eyebrow { margin-bottom: 6px; }
+
+  /* once the run is done the process block folds away; footage and the sidebar take the screen */
+  #run.done .process { display: none; }
+  #run.done .layout { margin-top: 26px; }
+  #run.done .request { font-size: clamp(22px, 2.4vw, 28px); }
+  #run.done #run { padding-top: 24px; }
+
+  /* ---- layout ---- */
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: 40px; margin-top: 48px; align-items: start; }
+  @media (max-width: 1100px) { .layout { grid-template-columns: minmax(0, 1fr) 312px; gap: 28px; } }
+  @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } }
+  aside { position: sticky; top: 68px; max-height: calc(100vh - 84px); overflow: auto; display: grid; gap: 12px; padding-bottom: 8px; scrollbar-width: thin; }
+  @media (max-width: 760px) { aside { position: static; max-height: none; } }
+
+  /* split bar + filter */
+  .split { height: 10px; border-radius: 5px; background: var(--line); display: flex; overflow: hidden; }
+  .split i { display: block; height: 100%; transition: width .6s var(--ease); }
+  .split .c { background: var(--green); } .split .r { background: var(--red); } .split .u { background: var(--orange); }
+  .filters { display: flex; gap: 4px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+  .filters .right { margin-left: auto; font-size: 14px; color: var(--ink-2); }
+  .f { display: inline-flex; align-items: center; gap: 10px; height: 46px; padding: 0 20px 0 18px; border-radius: 980px; transition: background .15s; }
+  .f:hover { background: var(--surface); }
+  .f b { font-size: 22px; letter-spacing: -.03em; font-variant-numeric: tabular-nums; line-height: 1; position: relative; top: -1px; }
+  .f span { font-size: 14px; color: var(--ink-2); line-height: 1; }
+  .f::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); align-self: center; }
+  .f.c::before { background: var(--green); } .f.r::before { background: var(--red); } .f.u::before { background: var(--orange); }
+  .f.on { background: var(--ink); color: #fff; } .f.on span { color: rgba(255,255,255,.7); }
+  .gal-head { margin-bottom: 20px; }
+
+  /* ---- tiles ---- */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 14px; }
+  .tile { position: relative; aspect-ratio: 16/9; border-radius: 16px; overflow: hidden; background: #0d0d0f; text-align: left; width: 100%; box-shadow: var(--shadow-1);
+          transform: translateZ(0); transition: transform .3s var(--ease), box-shadow .3s var(--ease); animation: pop .5s var(--ease) both; }
+  .tile:hover { transform: translateY(-2px) scale(1.012); box-shadow: var(--shadow-2); }
+  .tile:focus-visible { outline: 3px solid rgba(0,113,227,.6); outline-offset: 3px; }
+  .tile img, .tile video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tile video { opacity: 0; transition: opacity .25s; } .tile.playing video { opacity: 1; }
+  .tile.rejected img, .tile.unverified img { filter: grayscale(.9) brightness(.7); }
+  .tile .shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.2) 0%, rgba(0,0,0,0) 35%, rgba(0,0,0,0) 55%, rgba(0,0,0,.65) 100%); pointer-events: none; }
+  .tile .cam { position: absolute; left: 12px; top: 12px; font-size: 12px; font-weight: 600; color: #fff; display: inline-flex; align-items: center; gap: 5px;
+               background: rgba(255,255,255,.18); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border-radius: 980px; padding: 5px 11px 5px 9px; }
+  .tile .cam svg.i { font-size: 13px; }
+  .mark { position: absolute; right: 10px; top: 10px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+  .mark.confirmed { background: var(--green); } .mark.rejected { background: var(--red); } .mark.unverified { background: var(--orange); }
+  .mark svg { width: 13px; height: 13px; stroke: #fff; stroke-width: 3; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  .tile .foot { position: absolute; left: 12px; right: 12px; bottom: 11px; color: #fff; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+  .tile .foot .pill { font-size: 12px; font-weight: 500; background: rgba(255,255,255,.2); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border-radius: 980px; padding: 4px 10px; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .tile .foot .why { font-size: 13px; line-height: 1.3; width: 100%; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .tile .new { position: absolute; right: 10px; bottom: 12px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #fff; background: var(--blue); border-radius: 980px; padding: 4px 10px; }
+  .tile.skeleton { background: linear-gradient(100deg, #f0f0f3 30%, #f8f8fa 50%, #f0f0f3 70%); background-size: 200% 100%; animation: shimmer 1.6s linear infinite, pop .5s var(--ease) both; box-shadow: none; }
+  .tile.skeleton::after { content: ""; position: absolute; left: 14px; bottom: 14px; width: 60px; height: 8px; border-radius: 4px; background: #e3e3e8; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+  @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+  .empty { color: var(--ink-3); font-size: 15px; padding: 40px 24px; text-align: center; background: var(--surface); border-radius: var(--r-lg); }
+
+  /* ---- sidebar cards ---- */
+  .card { background: var(--surface); border-radius: var(--r-xl); padding: 24px 24px 22px; }
+  .card.focus { background: #fff; border: 1px solid var(--line); box-shadow: var(--shadow-1); }
+  .card h3 { font-size: 19px; letter-spacing: -.015em; font-weight: 600; margin: 0; line-height: 1.2; }
+  .card .lede { color: var(--ink-2); margin: 4px 0 0; font-size: 14px; line-height: 1.45; }
+  .card .eyebrow { margin-bottom: 10px; }
+  .improve-top { display: flex; gap: 16px; align-items: center; }
+  .ring { position: relative; width: 72px; height: 72px; flex: 0 0 auto; }
+  .ring svg { transform: rotate(-90deg); display: block; }
+  .ring circle { fill: none; stroke-width: 7; stroke-linecap: round; }
+  .ring .track-c { stroke: var(--line); } .ring .val { stroke: var(--blue); transition: stroke-dashoffset .9s var(--ease); }
+  .ring .num { position: absolute; inset: 0; display: grid; place-items: center; font-size: 22px; font-weight: 600; letter-spacing: -.03em; }
+  .improve-top h3 small { display: block; font-size: 13px; color: var(--ink-2); font-weight: 500; margin-top: 2px; letter-spacing: 0; }
+  .note { font-size: 13px; color: var(--ink-2); line-height: 1.45; }
+  .proposal { margin-top: 18px; display: grid; gap: 16px; }
+  textarea { width: 100%; min-height: 170px; resize: vertical; border: 1px solid var(--line); border-radius: var(--r-lg); padding: 14px 16px; background: #fff; font-size: 14px; line-height: 1.5; outline: none; transition: box-shadow .2s, border-color .2s; }
+  textarea:focus { border-color: rgba(0,113,227,.6); box-shadow: 0 0 0 4px rgba(0,113,227,.15); }
+  .field-label { font-size: 12px; color: var(--ink-2); text-transform: uppercase; letter-spacing: .07em; font-weight: 600; margin-bottom: 8px; display: flex; justify-content: space-between; }
+  .near { display: grid; gap: 8px; }
+  .near .nm { display: grid; grid-template-columns: 72px 1fr; gap: 10px; align-items: center; background: var(--surface); border-radius: var(--r-md); padding: 8px; text-align: left; }
+  .near .nm img { width: 72px; aspect-ratio: 16/9; object-fit: cover; border-radius: 6px; display: block; filter: grayscale(.8); background: #000; }
+  .near .nm span { font-size: 12px; color: var(--ink-2); line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .toggles { display: grid; gap: 8px; }
+  .toggle { display: flex; align-items: center; gap: 12px; background: var(--surface); border-radius: var(--r-md); padding: 10px 12px; font-size: 13px; cursor: pointer; }
+  .toggle input { appearance: none; -webkit-appearance: none; width: 38px; height: 24px; border-radius: 12px; background: #d2d2d7; position: relative; flex: 0 0 auto; transition: background .2s; margin: 0; cursor: pointer; }
+  .toggle input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.2); transition: transform .2s var(--ease); }
+  .toggle input:checked { background: var(--green); } .toggle input:checked::after { transform: translateX(14px); }
+  .toggle code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .timeline { margin-top: 16px; display: grid; gap: 10px; }
+  .iter { background: var(--surface); border-radius: var(--r-lg); padding: 14px 16px; display: grid; gap: 6px; }
+  .card.focus .iter { background: var(--surface); }
+  .iter .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-weight: 600; font-size: 14px; }
+  .iter .st { font-size: 12px; font-weight: 500; padding: 4px 11px; border-radius: 980px; background: #fff; color: var(--ink-2); }
+  .iter .st.run { color: var(--blue); } .iter .st.ok { color: var(--green); } .iter .st.bad { color: var(--red); }
+  .iter .job { font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .delta { display: flex; align-items: center; gap: 10px; font-size: 14px; margin-top: 2px; }
+  .delta b { font-size: 24px; letter-spacing: -.03em; } .delta .arr { color: var(--ink-3); } .delta .up { color: var(--green); font-weight: 600; }
+  .iter details summary { cursor: pointer; font-size: 13px; color: var(--blue); }
+  .iter pre { white-space: pre-wrap; font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace; background: #fff; border-radius: var(--r-md); padding: 10px 12px; margin: 8px 0 0; }
+
+  /* re-index progress */
+  .magic { margin-top: 16px; }
+  .magic .mbar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+  .magic .mbar i { display: block; height: 100%; border-radius: 4px; width: 4%; transition: width .9s var(--ease);
+                   background: linear-gradient(90deg, #0071e3, #7a5cff, #ff5fa2, #ff9f0a, #0071e3); background-size: 300% 100%; animation: flow 2.4s linear infinite; box-shadow: 0 0 14px rgba(122,92,255,.45); }
+  @keyframes flow { to { background-position: -300% 0; } }
+  .magic .mtext { margin-top: 10px; font-size: 14px; display: flex; justify-content: space-between; gap: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .magic .mtext b { font-weight: 600; background: linear-gradient(90deg, #0071e3, #7a5cff, #ff5fa2); -webkit-background-clip: text; background-clip: text; color: transparent; display: inline-flex; align-items: center; gap: 6px; }
+  .magic .mtext b::before { content: "✦"; -webkit-text-fill-color: #7a5cff; animation: twinkle 1.6s ease-in-out infinite; }
+  @keyframes twinkle { 0%,100% { opacity: .35; transform: scale(.8) rotate(0deg);} 50% { opacity: 1; transform: scale(1.15) rotate(20deg);} }
+  .track.magic .seg.active .bar-t i { width: 100% !important; animation: flow 2.4s linear infinite; background: linear-gradient(90deg, #0071e3, #7a5cff, #ff5fa2, #ff9f0a, #0071e3); background-size: 300% 100%; }
+  .track.magic .seg.active .lab { background: linear-gradient(90deg, #0071e3, #7a5cff, #ff5fa2); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  /* the agent "thinking": animated gradient border on the Improve card */
+  .card.focus.thinking { border-color: transparent; background: linear-gradient(#fff, #fff) padding-box, linear-gradient(120deg, #0071e3, #7a5cff, #ff5fa2, #ff9f0a, #0071e3) border-box; background-size: 100% 100%, 300% 100%; animation: flow 2.4s linear infinite; }
+  .btn.magic { color: #fff; background: linear-gradient(90deg, #0071e3, #7a5cff, #ff5fa2, #7a5cff, #0071e3); background-size: 300% 100%; animation: flow 3s linear infinite, glow 2.2s ease-in-out infinite; }
+  .btn.magic::before { content: "✦"; font-size: 13px; animation: twinkle 1.6s ease-in-out infinite; }
+  @keyframes glow { 0%,100% { box-shadow: 0 4px 18px rgba(122,92,255,.28);} 50% { box-shadow: 0 6px 26px rgba(255,95,162,.42);} }
+  .btn.dark.spark::before { content: "✦"; font-size: 13px; color: #c9b8ff; }
+  .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+  .near .nm { animation: pop .5s var(--ease) both; animation-delay: calc(var(--i, 0) * 90ms); }
+  .toggle { animation: pop .5s var(--ease) both; animation-delay: calc(var(--i, 0) * 90ms + .3s); }
+  .proposal > div { animation: pop .5s var(--ease) both; }
+  @media (max-width: 760px) { aside { order: -1; } }
+
+  /* heat map */
+  .heat { display: grid; gap: 6px; align-items: center; margin-top: 16px; }
+  .heat .hd { font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; text-align: center; font-weight: 600; }
+  .heat .rowname { font-size: 13px; font-weight: 500; padding-right: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+  .heat .rowname svg.i { font-size: 14px; color: var(--ink-2); }
+  .cell { aspect-ratio: 1; min-height: 38px; max-height: 46px; border-radius: 10px; display: grid; place-items: center; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; background: var(--blue); color: #fff; }
+  .cell.zero { background: transparent; color: var(--ink-3); border: 1.5px dashed #d2d2d7; font-weight: 500; }
+  .cell.na { border: 0; background: transparent; }
+  .bars { margin-top: 18px; display: grid; gap: 14px; }
+  .bars h4 { margin: 0 0 6px; font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+  .bar-row { display: grid; grid-template-columns: minmax(70px, 44%) 1fr 24px; align-items: center; gap: 8px; font-size: 13px; margin: 5px 0; }
+  .bar-row .k { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-row .b { height: 6px; border-radius: 3px; background: #e3e3e8; overflow: hidden; }
+  .bar-row .b i { display: block; height: 100%; background: var(--ink); border-radius: 3px; }
+  .bar-row .v { text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+  /* gaps */
+  .gap-text { font-size: 15px; line-height: 1.5; margin: 14px 0 16px; }
+  .plan { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .plan li { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; background: #fff; border-radius: var(--r-md); padding: 10px 12px; line-height: 1.4; }
+  .plan li::before { content: ""; flex: 0 0 16px; height: 16px; margin-top: 2px; border-radius: 50%; border: 1.5px solid var(--ink-3); }
+
+  /* ---- detail sheet ---- */
+  dialog { border: 0; padding: 0; background: transparent; max-width: none; max-height: none; width: 100vw; height: 100dvh; }
+  dialog::backdrop { background: rgba(0,0,0,.42); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+  .sheet { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(1180px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; background: #fff; border-radius: var(--r-xl);
+           box-shadow: var(--shadow-2); display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr); animation: rise .35s var(--ease); }
+  @media (max-width: 900px) { .sheet { grid-template-columns: 1fr; } }
+  @keyframes rise { from { opacity: 0; transform: translate(-50%, -46%) scale(.98); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+  .sheet .media { padding: 20px; background: #000; display: grid; align-content: center; gap: 14px; }
+  .sheet video { width: 100%; aspect-ratio: 16/9; border-radius: 14px; background: #000; display: block; }
+  .film { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .film button { aspect-ratio: 16/9; border-radius: 8px; overflow: hidden; background: #111; position: relative; opacity: .55; transition: opacity .2s, transform .2s var(--ease); }
+  .film button img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .film button:hover, .film button.on { opacity: 1; transform: translateY(-2px); }
+  .film button.on::after { content: ""; position: absolute; inset: 0; border: 2px solid #fff; border-radius: 8px; }
+  .film .t { position: absolute; left: 6px; bottom: 5px; font-size: 11px; color: #fff; font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+  .sheet .info { padding: 28px; display: grid; gap: 22px; align-content: start; position: relative; }
+  .close { position: absolute; right: 16px; top: 16px; width: 32px; height: 32px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; color: var(--ink-2); }
+  .close:hover { background: #ebebf0; }
+  .verdict { display: flex; gap: 12px; align-items: center; padding-right: 40px; }
+  .verdict .mark { position: static; width: 34px; height: 34px; flex: 0 0 auto; }
+  .verdict h3 { margin: 0; font-size: 22px; letter-spacing: -.02em; } .verdict p { margin: 2px 0 0; color: var(--ink-2); font-size: 14px; }
+  blockquote { margin: 0; padding: 14px 16px; background: var(--surface); border-radius: var(--r-md); font-size: 14px; line-height: 1.5; color: var(--ink); }
+  blockquote cite { display: block; margin-top: 6px; font-style: normal; font-size: 12px; color: var(--ink-3); }
+  .kv { display: grid; grid-template-columns: 110px 1fr; gap: 8px 14px; font-size: 14px; margin: 0; }
+  .kv dt { color: var(--ink-2); } .kv dd { margin: 0; font-weight: 500; } .kv dd::first-letter { text-transform: uppercase; }
+  .meter { display: grid; grid-template-columns: 110px 1fr 96px; gap: 10px; align-items: center; font-size: 14px; }
+  .meter .k { color: var(--ink-2); } .meter .b { height: 6px; border-radius: 3px; background: #e3e3e8; overflow: hidden; }
+  .meter .b i { display: block; height: 100%; border-radius: 3px; background: var(--ink); }
+  .meter .b i.good { background: var(--green); } .meter .b i.mid { background: var(--orange); } .meter .b i.bad { background: var(--red); }
+  .meter .v { text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fine { font-size: 12px; color: var(--ink-3); line-height: 1.5; word-break: break-all; margin: 0; }
+
+  .toast { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 20px); opacity: 0; background: var(--ink); color: #fff; font-size: 15px; padding: 12px 20px; border-radius: 980px; box-shadow: var(--shadow-2); transition: all .3s var(--ease); z-index: 50; pointer-events: none; max-width: calc(100vw - 32px); }
+  .toast.on { transform: translate(-50%, 0); opacity: 1; } .toast.err { background: var(--red); }
+  footer { padding: 80px 0 40px; color: var(--ink-3); font-size: 13px; text-align: center; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001s !important; transition-duration: .001s !important; } }
 </style>
 </head>
 <body>
-<h1>Edge-Case Miner</h1>
-<p class="sub">One sentence in. A verified, labelled dataset out, plus what you still need to collect.</p>
 
-<form id="form">
-  <input id="request" type="text" placeholder="e.g. forklift passing close to a person" required minlength="3" maxlength="300">
-  <button id="go">Mine</button>
-  <button id="export" type="button" class="secondary" disabled>Export dataset</button>
-</form>
-<div id="groups"></div>
-<p id="error" class="error"></p>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="ic-all" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="ic-dashcam" viewBox="0 0 24 24"><path d="M4 16l1.6-5A2 2 0 017.5 9.6h9a2 2 0 011.9 1.4L20 16v3H4z"/><path d="M4 16h16"/><circle cx="7.5" cy="19" r="1.6"/><circle cx="16.5" cy="19" r="1.6"/><path d="M8 9.6l1-2.6h6l1 2.6"/></symbol>
+  <symbol id="ic-street" viewBox="0 0 24 24"><path d="M4 7h10l4 2-4 2H4z"/><path d="M9 11v9"/><path d="M5.5 20h7"/><path d="M18 9l3-1"/></symbol>
+  <symbol id="ic-highway" viewBox="0 0 24 24"><path d="M6 20L9.5 4"/><path d="M18 20L14.5 4"/><path d="M12 5v3M12 11v3M12 17v3"/></symbol>
+  <symbol id="ic-warehouse" viewBox="0 0 24 24"><path d="M3 20V9l9-5 9 5v11"/><path d="M3 20h18"/><path d="M8 20v-5h8v5"/><path d="M12 15v5"/></symbol>
+  <symbol id="ic-smart" viewBox="0 0 24 24"><path d="M12 18h.01"/><path d="M8.5 14.5a5 5 0 017 0"/><path d="M5.6 11.6a9 9 0 0112.8 0"/><path d="M3 8.5a12.5 12.5 0 0118 0"/></symbol>
+  <symbol id="ic-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
+</svg>
 
-<div id="progress" hidden>
-  <div><b id="n-searched">0</b>searched</div>
-  <div><b id="n-verified">0</b>verified</div>
-  <div class="ok"><b id="n-confirmed">0</b>confirmed</div>
-  <div class="bad"><b id="n-rejected">0</b>rejected</div>
-  <div class="warn"><b id="n-unverified">0</b>unverified</div>
-  <div><b id="stage">&nbsp;</b><span id="plan"></span></div>
-</div>
-
-<section id="results" hidden>
-  <h2>Confirmed clips</h2><div id="confirmed" class="grid"></div>
-  <h2>Rejected and unverified (verification is real)</h2><div id="rejected" class="grid"></div>
-  <h2>Coverage</h2><div id="coverage"></div>
-  <h2>Gaps and next collection</h2><p id="gaps"></p><ul id="plan-lines"></ul>
-  <h2>Re-ingest loop</h2>
-  <p id="loop-note"></p>
-  <button id="propose" type="button" class="secondary" hidden>Propose a better ingestion prompt</button>
-  <div id="proposal" hidden>
-    <p>Proposed superset prompt (editable, max 800 characters):</p>
-    <textarea id="prompt" rows="6" maxlength="800"></textarea>
-    <p>Chunks to re-ingest (chunk_count 1 each). This replaces their captions on shared infrastructure.</p>
-    <div id="chunks"></div>
-    <p><button id="approve" type="button">Approve and re-ingest</button></p>
+<nav class="bar"><div class="wrap">
+  <div class="brand"><i></i>Edge-Case Miner</div>
+  <div class="bar-right">
+    <div id="stage" class="stage"><span class="dot"></span><span id="stage-text"></span></div>
+    <button id="new" class="btn quiet" hidden>New search</button>
+    <button id="export" class="btn primary" hidden>Export dataset</button>
   </div>
-  <div id="loop-log"></div>
-</section>
+</div></nav>
+
+<main class="wrap">
+
+  <section id="hero">
+    <h1>One sentence in.<br><span class="soft">A verified dataset out.</span></h1>
+    <p class="sub">Every camera searched. Every clip checked by Cosmos Reason, labelled and scored.</p>
+    <form id="form" class="search" autocomplete="off">
+      <input id="request" type="text" placeholder="Describe the moment" required minlength="3" maxlength="300" aria-label="Describe the event you need footage of">
+      <button id="go" class="btn primary" type="submit">Mine</button>
+    </form>
+    <div class="examples" id="examples"><span class="eyebrow">Try</span></div>
+    <div class="scopes">
+      <div class="eyebrow">Cameras</div>
+      <div class="sources" id="scopes"></div>
+    </div>
+  </section>
+
+  <section id="run" hidden>
+    <div class="runbar">
+      <div>
+        <h2 class="request" id="req-title"></h2>
+        <p class="meta" id="req-meta"></p>
+      </div>
+    </div>
+
+    <div class="process">
+      <div class="track" id="track">
+        <div class="seg" data-s="searching"><div class="lab"><svg class="i"><use href="#ic-check"/></svg>Search</div><div class="bar-t"><i></i></div></div>
+        <div class="seg" data-s="verifying"><div class="lab"><svg class="i"><use href="#ic-check"/></svg>Verify &amp; score</div><div class="bar-t"><i></i></div></div>
+        <div class="seg" data-s="reporting"><div class="lab"><svg class="i"><use href="#ic-check"/></svg>Report</div><div class="bar-t"><i></i></div></div>
+        <div class="seg" data-s="done"><div class="lab"><svg class="i"><use href="#ic-check"/></svg>Dataset</div><div class="bar-t"><i></i></div></div>
+      </div>
+      <div class="now">
+        <div>
+          <div class="eyebrow" id="now-step"></div>
+          <h2 id="now-title"></h2>
+          <p id="now-sub"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="layout">
+      <section>
+        <div class="gal-head">
+          <div class="split" id="split"><i class="c"></i><i class="r"></i><i class="u"></i></div>
+          <div class="filters" id="filters">
+            <button class="f c on" data-f="confirmed"><b>0</b><span>confirmed</span></button>
+            <button class="f r" data-f="rejected"><b>0</b><span>rejected</span></button>
+            <button class="f u" data-f="unverified"><b>0</b><span>unverified</span></button>
+            <span class="right" id="found"></span>
+          </div>
+        </div>
+        <div class="grid" id="grid"></div>
+      </section>
+
+      <aside id="side" hidden>
+        <div class="card focus" id="improve">
+          <div class="improve-top">
+            <div class="ring">
+              <svg viewBox="0 0 72 72" width="72" height="72"><circle class="track-c" cx="36" cy="36" r="31"></circle><circle id="ring-val" class="val" cx="36" cy="36" r="31" stroke-dasharray="194.8" stroke-dashoffset="194.8"></circle></svg>
+              <div class="num" id="ring-n">0</div>
+            </div>
+            <h3 id="improve-title">Improve the index<small id="improve-sub"></small></h3>
+          </div>
+          <p class="note" style="margin:14px 0 0">The prompt decides what gets indexed. The agent writes a richer captioning prompt, re-indexes the videos that came closest, then verifies again. Nothing runs until you approve.</p>
+          <div class="actions"><button id="propose" class="btn dark spark" hidden>Propose a better prompt</button></div>
+          <div class="proposal" id="proposal" hidden>
+            <div class="actions" style="margin-top:0">
+              <button id="approve" class="btn magic">Approve and re-index</button>
+              <button id="cancel" class="btn ghost">Not now</button>
+            </div>
+            <div>
+              <div class="field-label"><span>Captioning prompt</span><span id="prompt-len">0 / 800</span></div>
+              <textarea id="prompt" maxlength="800" rows="5" style="min-height:0"></textarea>
+            </div>
+            <div id="near-block">
+              <div class="field-label"><span>Near misses it learned from</span></div>
+              <div class="near" id="near"></div>
+            </div>
+            <div>
+              <div class="field-label"><span>Videos to re-index</span></div>
+              <div class="toggles" id="chunks"></div>
+              <p class="note" style="margin:8px 0 0">Replaces their captions on the shared pipeline. A few minutes.</p>
+            </div>
+          </div>
+          <div class="magic" id="magic" hidden>
+            <div class="mbar"><i id="magic-fill"></i></div>
+            <div class="mtext"><b id="magic-phase">Rewriting captions</b><span id="magic-pct">0%</span></div>
+          </div>
+          <div class="timeline" id="timeline"></div>
+        </div>
+
+        <div class="card">
+          <div class="eyebrow">Coverage</div>
+          <h3>Where the clips come from</h3>
+          <div class="heat" id="heat"></div>
+          <div class="bars" id="bars"></div>
+        </div>
+
+        <div class="card">
+          <div class="eyebrow">Gaps</div>
+          <h3>What to collect next</h3>
+          <p class="gap-text" id="gaps"></p>
+          <ul class="plan" id="plan"></ul>
+          <p class="note" id="gap-src" style="margin:12px 0 0"></p>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <footer>Edge-Case Miner · VAST Builders Challenge · Cosmos Embed search · Cosmos Reason verification · YOLO11 detections</footer>
+</main>
+
+<dialog id="sheet"><div class="sheet">
+  <div class="media">
+    <video id="d-video" controls muted loop playsinline></video>
+    <div class="film" id="d-film"></div>
+  </div>
+  <div class="info">
+    <button class="close" id="d-close" aria-label="Close"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 1l10 10M11 1L1 11"/></svg></button>
+    <div class="verdict"><span class="mark" id="d-mark"></span><div><h3 id="d-title"></h3><p id="d-sub"></p></div></div>
+    <blockquote id="d-reasoning"></blockquote>
+    <div><div class="field-label"><span>Labels</span></div><dl class="kv" id="d-labels"></dl></div>
+    <div><div class="field-label"><span>Quality</span><span id="d-qscore"></span></div><div style="display:grid; gap:10px" id="d-quality"></div></div>
+    <blockquote id="d-caption"></blockquote>
+    <p class="fine" id="d-fine"></p>
+  </div>
+</div></dialog>
+
+<div class="toast" id="toast"></div>
 
 <script>
 const $ = id => document.getElementById(id);
-const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
-let runId = null, timer = null, lastKey = "";
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const SVG = "http://www.w3.org/2000/svg";
+function icon(name, cls) { const s = document.createElementNS(SVG, "svg"); s.setAttribute("class", "i" + (cls ? " " + cls : "")); const u = document.createElementNS(SVG, "use"); u.setAttribute("href", "#ic-" + name); s.append(u); return s; }
+
+const STATUSES = ["confirmed", "rejected", "unverified"];
+const safeStatus = s => STATUSES.includes(s) ? s : "unverified";
+const safeId = id => /^[0-9a-f]{24}$/.test(id || "") ? id : "";
+const MARK_PATHS = { confirmed: "M3 7.5l2.5 2.5L11 4", rejected: "M3.5 3.5l7 7M10.5 3.5l-7 7", unverified: "M7 3v4.5M7 10.5v.5" };
+function mark(status) {
+  const span = el("span", "mark " + safeStatus(status));
+  const svg = document.createElementNS(SVG, "svg"); svg.setAttribute("viewBox", "0 0 14 14");
+  const path = document.createElementNS(SVG, "path"); path.setAttribute("d", MARK_PATHS[safeStatus(status)]);
+  svg.append(path); span.append(svg); return span;
+}
+const EXAMPLES = ["Forklift passing close to a person", "Pedestrian crossing in front of a turning car", "Cyclist overtaking a bus", "Worker without a helmet near moving equipment"];
+const LIGHTS = ["day", "dusk", "night", "indoor"];
+const INDOOR = /warehouse|smartspace|indoor/i;
+// Camera kind from its id: the icon is the primary differentiator, place and "synthetic" are secondary.
+function kindOf(id = "") { return /pie|dash/i.test(id) ? "dashcam" : /i24|highway/i.test(id) ? "highway" : /warehouse|sdg/i.test(id) ? "warehouse" : /smart|indoor/i.test(id) ? "smart" : "street"; }
+const isSynthetic = id => /sdg|synthetic/i.test(id || "");
+const STEP_COPY = {
+  searching:   ["Step 1 of 4", "Searching the archive", "Cosmos Embed ranks every indexed clip against your sentence."],
+  verifying:   ["Step 2 of 4", "Verifying with Cosmos Reason", "Each candidate gets a yes/no question about what it actually shows, then a quality score."],
+  reporting:   ["Step 3 of 4", "Writing the report", "Coverage by camera and lighting, the gaps, and what to collect next."],
+  "re-ingesting": ["Improving the index", "Re-indexing on the pipeline", "New captions for the closest videos, then search and verify again."],
+};
+
+let runId = null, timer = null, lastKey = "", cameras = [], baselineIds = null, cardsById = {}, filter = "confirmed", lastRun = null;
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
@@ -91,130 +472,338 @@ async function api(path, opts) {
   return r;
 }
 const post = (path, body) => api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+let toastTimer;
+function toast(msg, err) { const t = $("toast"); t.textContent = msg; t.className = "toast on" + (err ? " err" : ""); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = "toast", 3200); }
+
+/* ---------- hero ---------- */
+for (const ex of EXAMPLES) { const b = el("button", null, ex); b.type = "button"; b.onclick = () => { $("request").value = ex; $("request").focus(); }; $("examples").append(b); }
 
 async function loadCameras() {
   try {
-    const { cameras } = await (await api("/api/cameras")).json();
+    const raw = (await (await api("/api/cameras")).json()).cameras;
+    cameras = raw.map(c => typeof c === "string" ? { id: c, name: c, place: "" } : c);
+    const all = el("button", "src on"); all.type = "button"; all.dataset.id = ""; all.append(icon("all"), el("b", null, "All cameras"), el("small", null, cameras.length + " sources"));
+    $("scopes").append(all);
     for (const cam of cameras) {
-      const id = typeof cam === "string" ? cam : cam.id;   // /api/cameras may return ids or {id, name}
-      const label = el("label"), box = el("input");
-      box.type = "checkbox"; box.value = id;
-      label.append(box, " " + (cam.name && cam.name !== id ? cam.name + " (" + id + ")" : id)); $("groups").append(label);
+      const b = el("button", "src"); b.type = "button"; b.dataset.id = cam.id;
+      b.append(icon(kindOf(cam.id)), el("b", null, cam.name), el("small", null, cam.place || kindOf(cam.id)));
+      if (isSynthetic(cam.id)) b.append(el("span", "syn", "SYN"));
+      $("scopes").append(b);
     }
-  } catch (e) { $("error").textContent = "Could not load camera groups: " + e.message; }
+    $("scopes").addEventListener("click", ev => {
+      const b = ev.target.closest(".src"); if (!b) return;
+      if (!b.dataset.id) { [...$("scopes").children].forEach(x => x.classList.toggle("on", x === b)); return; }
+      b.classList.toggle("on"); all.classList.toggle("on", ![...$("scopes").children].some(x => x.dataset.id && x.classList.contains("on")));
+    });
+  } catch (e) { toast("Could not reach the video backend: " + e.message, true); }
 }
+const camName = id => (cameras.find(c => c.id === id) || {}).name || id || "Camera";
+function camChip(id, cls) { const s = el("span", cls); s.append(icon(kindOf(id)), camName(id)); return s; }
 
 $("form").addEventListener("submit", async ev => {
   ev.preventDefault();
-  $("error").textContent = "";
-  const groups = [...document.querySelectorAll("#groups input:checked")].map(b => b.value);
+  const groups = [...$("scopes").querySelectorAll(".src.on")].map(b => b.dataset.id).filter(Boolean);
   try {
-    runId = (await (await post("/api/mine", { request: $("request").value, groups })).json()).id;
-    lastKey = ""; $("progress").hidden = false; $("results").hidden = true; $("proposal").hidden = true;
-    clearInterval(timer); timer = setInterval(poll, 1500); poll();
-  } catch (e) { $("error").textContent = e.message; }
+    runId = (await (await post("/api/mine", { request: $("request").value.trim(), groups })).json()).id;
+    startRun($("request").value.trim(), groups);
+  } catch (e) { toast(e.message, true); }
 });
 
-function card(c) {
-  const d = el("div", null, "card " + c.status);
-  const v = el("video"); v.controls = true; v.muted = true; v.preload = "metadata"; v.src = "/api/clip/" + c.clip_id;
-  d.append(v);
-  const q = c.quality ? "  quality " + c.quality.score : "";
-  d.append(el("div", c.camera_id + "  similarity " + c.similarity + q, "meta"));
-  d.append(el("div", c.reason || "", "reason"));
-  const tags = el("div", null, "tags"), L = c.labels || {};
-  for (const k of ["action", "distance_class", "lighting", "weather", "occlusion"]) if (L[k]) tags.append(el("span", k.replace("_class", "") + ": " + L[k]));
-  if (Array.isArray(L.actors) && L.actors.length) tags.append(el("span", "actors: " + L.actors.join(", ")));
-  d.append(tags, el("p", c.reasoning || "", "why"));
-  return d;
+function startRun(request, groups) {
+  lastKey = ""; baselineIds = null; cardsById = {}; filter = "confirmed"; lastRun = null;
+  $("hero").classList.add("compact");
+  $("run").hidden = false; $("run").classList.remove("done"); $("side").hidden = true; $("proposal").hidden = true; $("export").hidden = true;
+  $("req-title").replaceChildren(el("span", "q", "“"), request, el("span", "q", "”"));
+  setMeta(groups.length ? groups : null, null);
+  $("grid").replaceChildren(); $("timeline").replaceChildren();
+  $("new").hidden = false;
+  for (const b of $("filters").querySelectorAll(".f")) b.classList.toggle("on", b.dataset.f === "confirmed");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  clearInterval(timer); timer = setInterval(poll, 1500); poll();
+}
+function setMeta(cams, extra) {
+  const m = $("req-meta"); m.replaceChildren();
+  if (cams && cams.length) cams.forEach(c => m.append(camChip(c, "cam"))); else m.append(el("span", null, "All cameras"));
+  if (extra) m.append(el("span", null, "·"), el("span", null, extra));
+}
+$("new").onclick = () => { $("hero").classList.remove("compact"); $("run").hidden = true; $("new").hidden = true; $("request").value = ""; $("request").focus(); window.scrollTo({ top: 0, behavior: "smooth" }); };
+
+/* ---------- tiles ---------- */
+function tile(c, opts = {}) {
+  const status = safeStatus(c.status), id = safeId(c.clip_id);
+  const t = el("button", "tile " + status); t.type = "button"; t.dataset.id = id;
+  const img = el("img"); img.loading = "lazy"; img.alt = ""; if (id) img.src = "/api/still/" + id + "/2"; t.append(img);
+  t.append(el("div", "shade"), camChip(c.camera_id, "cam"), mark(status));
+  const foot = el("div", "foot"), L = c.labels || {};
+  if (status === "confirmed") { for (const k of ["action", "distance_class", "lighting"]) if (L[k] && L[k] !== "unknown") foot.append(el("span", "pill", String(L[k]).replace(/_/g, " "))); }
+  else foot.append(el("span", "why", status === "rejected" ? humanReason(c) : "No answer from Cosmos. Kept out."));
+  t.append(foot);
+  if (opts.isNew) t.append(el("span", "new", "New"));
+  t.addEventListener("mouseenter", () => playPreview(t, c));
+  t.addEventListener("mouseleave", () => stopPreview(t));
+  t.addEventListener("click", () => openSheet(c));
+  return t;
+}
+function humanReason(c) {
+  const r = c.reason || "";
+  if (/cosmos NO/i.test(r)) return "Cosmos: not the event described";
+  if (/blurry/i.test(r)) return "Too blurry to label";
+  if (/not fully visible/i.test(r)) return "Event cut off by the clip";
+  if (/no relevant YOLO/i.test(r)) return "No relevant objects detected";
+  return r.replace(/;/g, " ·") || "Below the quality bar";
+}
+function playPreview(t, c) {
+  const id = safeId(c.clip_id); if (!id || t.querySelector("video") || !window.matchMedia("(hover: hover)").matches) return;
+  const v = el("video"); v.muted = true; v.loop = true; v.playsInline = true; v.preload = "auto"; v.src = "/api/clip/" + id;
+  v.addEventListener("playing", () => t.classList.add("playing")); t.append(v); v.play().catch(() => {});
+}
+function stopPreview(t) { const v = t.querySelector("video"); if (v) { v.pause(); v.remove(); } t.classList.remove("playing"); }
+
+/* ---------- process + counts ---------- */
+function renderProcess(run) {
+  const n = run.counts || {}, stage = run.stage, done = stage === "done";
+  const order = ["searching", "verifying", "reporting", "done"], idx = order.indexOf(stage === "re-ingesting" ? "searching" : stage);
+  const total = Math.min(20, n.searched || 0);
+  [...$("track").children].forEach((s, i) => {
+    s.classList.toggle("done", done || i < idx); s.classList.toggle("active", !done && i === idx);
+    const det = i === 1 && stage === "verifying" && total;
+    s.classList.toggle("indeterminate", !done && i === idx && !det);
+    if (det) s.querySelector("i").style.width = Math.round(100 * (n.verified || 0) / total) + "%";
+    else if (!(done || i < idx)) s.querySelector("i").style.width = "";
+  });
+  if (done) {
+    const t = run.timings || {}, secs = Math.round((t.search_s || 0) + (t.verify_wall_s || 0));
+    $("now-step").textContent = "Done";
+    $("now-title").replaceChildren(n.confirmed ? `${n.confirmed} clips confirmed` : "No clip confirmed");
+    $("now-sub").textContent = `${n.verified} verified from ${n.searched} candidates${secs ? ` in ${secs} s` : ""}. ${n.confirmed ? "Manifest, labels, clips and a dataset card, zipped." : "The agent can improve the index from the sidebar."}`;
+  } else {
+    const [step, title, sub] = STEP_COPY[stage] || ["", stage, ""];
+    $("now-step").textContent = step;
+    const h = $("now-title"); h.replaceChildren(title);
+    if (stage === "verifying" && total) { h.append(" "); const sp = el("span", "n", `${n.verified || 0} of ${total}`); h.append(sp); }
+    $("now-sub").textContent = sub;
+  }
+  $("stage").classList.toggle("on", !done);
+  $("stage-text").textContent = (STEP_COPY[stage] || [, stage])[1];
+  const v = Math.max(1, n.verified || 0);
+  $("split").querySelector(".c").style.width = (100 * (n.confirmed || 0) / v) + "%";
+  $("split").querySelector(".r").style.width = (100 * (n.rejected || 0) / v) + "%";
+  $("split").querySelector(".u").style.width = (100 * (n.unverified || 0) / v) + "%";
+  for (const b of $("filters").querySelectorAll(".f")) b.querySelector("b").textContent = n[b.dataset.f] || 0;
+  $("found").textContent = n.searched ? `${n.verified || 0} verified of ${n.searched} found` : "";
 }
 
-function renderCoverage(cov) {
-  const box = $("coverage"); box.replaceChildren();
-  const rows = cov.by_camera_lighting, lights = [...new Set(Object.values(rows).flatMap(Object.keys))];
-  const t = el("table"), head = el("tr"); head.append(el("th", "camera group")); lights.forEach(l => head.append(el("th", l))); t.append(head);
+/* ---------- gallery ---------- */
+function renderGrid(run) {
+  const grid = $("grid"), n = run.counts, done = run.stage === "done";
+  const cards = run.candidates.filter(c => c.status !== "candidate");
+  cardsById = Object.fromEntries(cards.map(c => [c.clip_id, c]));
+  if (!done) {   // live: every verified clip in arrival order, placeholders for the rest
+    const have = new Set([...grid.querySelectorAll(".tile[data-id]")].map(t => t.dataset.id));
+    for (const c of cards) if (!have.has(c.clip_id)) { const sk = grid.querySelector(".skeleton"); const t = tile(c); sk ? sk.replaceWith(t) : grid.append(t); }
+    const want = run.stage === "reporting" ? cards.length : run.stage === "searching" && !n.searched ? 8 : Math.min(20, n.searched || 0);
+    const pending = Math.max(0, want - cards.length) - grid.querySelectorAll(".skeleton").length;
+    for (let i = 0; i < pending; i++) grid.append(el("div", "tile skeleton"));
+    if (pending < 0) [...grid.querySelectorAll(".skeleton")].slice(pending).forEach(s => s.remove());
+    return;
+  }
+  const shown = cards.filter(c => safeStatus(c.status) === filter);
+  const emptyCopy = { confirmed: "No clip passed verification. Try the sidebar: the agent can improve the index.", rejected: "Nothing was rejected.", unverified: "Every clip got an answer from Cosmos." };
+  grid.replaceChildren(...(shown.length ? shown.map(c => tile(c, { isNew: filter === "confirmed" && baselineIds && !baselineIds.has(c.clip_id) })) : [el("div", "empty", emptyCopy[filter])]));
+}
+$("filters").addEventListener("click", ev => {
+  const b = ev.target.closest(".f"); if (!b || !lastRun || lastRun.stage !== "done") return;
+  filter = b.dataset.f; for (const x of $("filters").querySelectorAll(".f")) x.classList.toggle("on", x === b);
+  renderGrid(lastRun);
+});
+
+/* ---------- sidebar ---------- */
+function renderReport(rep) {
+  const cov = rep.coverage, rows = cov.by_camera_lighting, heat = $("heat");
+  heat.style.gridTemplateColumns = `minmax(90px, 1.3fr) repeat(${LIGHTS.length}, minmax(34px, 1fr))`;
+  heat.replaceChildren(el("div"), ...LIGHTS.map(l => el("div", "hd", l)));
+  const max = Math.max(1, ...Object.values(rows).flatMap(r => Object.values(r)));
   for (const [cam, row] of Object.entries(rows)) {
-    const tr = el("tr"); tr.append(el("td", cam));
-    lights.forEach(l => tr.append(el("td", String(row[l] || 0), row[l] ? "some" : "zero")));
-    t.append(tr);
+    heat.append(camChip(cam, "rowname"));
+    const indoor = INDOOR.test(cam);
+    for (const l of LIGHTS) {
+      const k = row[l] || 0, na = (l === "indoor") !== indoor;
+      const c = el("div", "cell" + (k ? "" : na ? " na" : " zero"), k ? String(k) : na ? "" : "0");
+      if (k) c.style.opacity = (0.45 + 0.55 * k / max).toFixed(2);
+      c.title = `${camName(cam)} · ${l}: ${k} confirmed`; heat.append(c);
+    }
   }
-  box.append(t);
-  for (const [name, key] of [["By action", "by_action"], ["By distance", "by_distance"]]) {
-    const short = s => s.length > 48 ? s.slice(0, 47) + "…" : s;
-    const all = Object.entries(cov[key] || {}).sort((a, b) => b[1] - a[1]);
-    const parts = all.slice(0, 5).map(([k, n]) => short(k) + " ×" + n).join(",  ") + (all.length > 5 ? ",  and " + (all.length - 5) + " more" : "");
-    if (parts) box.append(el("p", name + ": " + parts));
+  const bars = $("bars"); bars.replaceChildren();
+  for (const [title, key] of [["By action", "by_action"], ["By distance", "by_distance"]]) {
+    const all = Object.entries(cov[key] || {}).filter(([k]) => k !== "unknown").sort((a, b) => b[1] - a[1]).slice(0, 4);
+    if (!all.length) continue;
+    const box = el("div"); box.append(el("h4", null, title)); const top = all[0][1];
+    for (const [k, v] of all) { const r = el("div", "bar-row"); r.append(el("span", "k", k.replace(/_/g, " "))); const b = el("div", "b"); const i = el("i"); i.style.width = (100 * v / top) + "%"; b.append(i); r.append(b, el("span", "v", v)); box.append(r); }
+    bars.append(box);
   }
+  $("gaps").textContent = rep.gap_report || "";
+  $("plan").replaceChildren(...(rep.collection_plan || []).map(l => el("li", null, l)));
+  $("gap-src").textContent = rep.source === "llm" ? "Written by the agent from the coverage matrix." : "Derived from the empty coverage cells.";
 }
 
 function renderLoop(run) {
-  const its = (run.loop && run.loop.iterations) || [], log = $("loop-log"); log.replaceChildren();
+  const n = run.counts.confirmed, target = run.target || 10, its = (run.loop && run.loop.iterations) || [], reached = n >= target;
+  $("ring-n").textContent = n;
+  $("ring-val").style.strokeDashoffset = (194.8 * (1 - Math.min(1, n / target))).toFixed(1);
+  $("ring-val").style.stroke = reached ? "var(--green)" : "var(--blue)";
+  $("improve-title").firstChild.textContent = reached ? "Target reached" : "Improve the index";
+  const live = run.stage === "re-ingesting";
+  $("improve-sub").textContent = live ? "Re-indexing, then searching and verifying again." : reached ? `${n} of ${target} confirmed. No re-indexing needed.` : `${n} of ${target} confirmed${its.length && !run.needs_loop ? ". Loop limit reached." : ""}`;
+  $("propose").hidden = !run.needs_loop || run.stage !== "done";
+  renderMagic(run, its);
+  const tl = $("timeline"); tl.replaceChildren();
   its.forEach((it, i) => {
-    log.append(el("h3", "Iteration " + (i + 1) + ": " + it.status + (it.seconds ? " (" + it.seconds + " s)" : "")));
-    log.append(el("pre", it.prompt));
-    (it.jobs || []).forEach(j => log.append(el("p", "Re-ingested " + j.original_video + "  " + (j.progress || ""))));
-    const before = it.before.confirmed, after = it.after ? it.after.confirmed : "…";
-    log.append(el("p", "Confirmed clips: before " + before + ", after " + after, "reason"));
-    if (it.error) log.append(el("p", it.error, "error"));
+    const box = el("div", "iter"), top = el("div", "top");
+    top.append(el("span", null, `Iteration ${i + 1}`), el("span", "st " + (it.status === "completed" ? "ok" : it.status === "failed" ? "bad" : "run"), it.status + (it.seconds ? ` · ${Math.round(it.seconds)} s` : "")));
+    box.append(top);
+    (it.jobs || []).forEach(j => box.append(el("div", "job", `${(j.original_video || "").split("/").pop()}  ${j.progress || ""}`)));
+    const d = el("div", "delta"); d.append(el("b", null, it.before.confirmed), el("span", "arr", "→"));
+    if (it.after) { d.append(el("b", null, it.after.confirmed)); const up = it.after.confirmed - it.before.confirmed; d.append(el("span", up > 0 ? "up" : "arr", up > 0 ? `+${up} confirmed` : "no change")); }
+    else d.append(el("span", "arr", "…"));
+    box.append(d);
+    const det = el("details"); det.append(el("summary", null, "Prompt used"), el("pre", null, it.prompt)); box.append(det);
+    if (it.error) { const e = el("div", "job", it.error); e.style.color = "var(--red)"; box.append(e); }
+    tl.append(box);
   });
-  $("loop-note").textContent = run.needs_loop
-    ? run.counts.confirmed + " confirmed, target " + run.target + ". The agent can rewrite the ingestion prompt and re-index the closest chunks."
-    : (its.length ? "" : "Target of " + run.target + " confirmed clips reached, or the loop limit is used up.");
-  $("propose").hidden = !run.needs_loop;
 }
 
+// Re-index progress: 0-80% across the chunk jobs (parsed from "a/b chunks, c/d clips"), 80-95% for search + verify.
+function renderMagic(run, its) {
+  const it = its[its.length - 1], live = run.stage === "re-ingesting" && it && !["completed", "failed"].includes(it.status);
+  $("magic").hidden = !live; $("track").classList.toggle("magic", !!live); $("improve").classList.toggle("thinking", !!live);
+  if (!live) return;
+  const total = Math.max(1, (it.chunks || []).length); let done = 0, phase = "Rewriting captions";
+  for (const j of it.jobs || []) {
+    const m = /(\d+)\/(\d+) chunks, (\d+)\/(\d+) clips/.exec(j.progress || "");
+    if (!m) { phase = "Submitting to the pipeline"; continue; }
+    const chunkFrac = Number(m[2]) ? Number(m[1]) / Number(m[2]) : 0, clipFrac = Number(m[4]) ? Number(m[3]) / Number(m[4]) : 0;
+    done += Math.max(chunkFrac, clipFrac * 0.98);
+    phase = `Re-indexing ${(j.original_video || "").split("/").pop()}`;
+  }
+  let frac = 0.04 + 0.76 * Math.min(1, done / total);
+  if (it.status === "searching again") { frac = 0.88; phase = "Searching and verifying again"; }
+  $("magic-fill").style.width = Math.round(frac * 100) + "%";
+  $("magic-phase").textContent = phase; $("magic-pct").textContent = Math.round(frac * 100) + "%";
+}
+
+/* ---------- poll ---------- */
 async function poll() {
   if (!runId) return;
   let run;
-  try { run = await (await api("/api/runs/" + runId)).json(); } catch (e) { $("error").textContent = e.message; return; }
-  const n = run.counts || {};
-  for (const k of ["searched", "verified", "confirmed", "rejected", "unverified"]) $("n-" + k).textContent = n[k] || 0;
-  $("stage").textContent = run.stage;
-  $("plan").textContent = run.plan ? "query: " + run.plan.query : "";
-  $("error").textContent = run.error || "";
-  const done = run.stage === "done";
-  $("export").disabled = !done || !n.confirmed;
-  $("go").disabled = !done;
-  const key = JSON.stringify([run.stage, n, (run.loop || {}).iterations]);
-  if (key === lastKey) return;
-  lastKey = key;
-  const shown = run.candidates.filter(c => c.status !== "candidate");
-  if (shown.length || done) $("results").hidden = false;
-  $("confirmed").replaceChildren(...shown.filter(c => c.status === "confirmed").map(card));
-  $("rejected").replaceChildren(...shown.filter(c => c.status !== "confirmed").map(card));
-  if (run.report) {
-    renderCoverage(run.report.coverage);
-    $("gaps").textContent = run.report.gap_report;
-    $("plan-lines").replaceChildren(...run.report.collection_plan.map(l => el("li", l)));
+  try { run = await (await api("/api/runs/" + runId)).json(); } catch (e) { toast(e.message, true); return; }
+  lastRun = run;
+  const n = run.counts || {}, done = run.stage === "done", reindexing = run.stage === "re-ingesting";
+  renderProcess(run);
+  if (run.error) toast(run.error, true);
+  const key = JSON.stringify([run.stage, n, run.loop, !!run.report]);
+  if (key === lastKey) return; lastKey = key;
+  if (reindexing) renderLoop(run);
+  else renderGrid(run);
+  $("run").classList.toggle("done", done);
+  if (done) {
+    $("side").hidden = false;
+    if (run.report) renderReport(run.report);
+    renderLoop(run);
+    if (baselineIds === null) baselineIds = new Set(run.candidates.filter(c => c.status === "confirmed").map(c => c.clip_id));
+    $("export").hidden = !n.confirmed;
+    const tt = run.timings || {}, secs = Math.round((tt.search_s || 0) + (tt.verify_wall_s || 0));
+    setMeta(run.cameras && run.cameras.length ? run.cameras : null, `${n.searched} candidates · ${n.verified} verified${secs ? ` · ${secs} s` : ""}`);
+    clearInterval(timer); timer = null;
   }
-  renderLoop(run);
-  if (done) { clearInterval(timer); timer = null; }
 }
 
-$("export").addEventListener("click", async () => {
+/* ---------- detail sheet ---------- */
+function openSheet(c) {
+  const id = safeId(c.clip_id), status = safeStatus(c.status);
+  const v = $("d-video"); v.poster = id ? "/api/still/" + id + "/2" : ""; v.src = id ? "/api/clip/" + id : "";
+  const film = $("d-film"); film.replaceChildren();
+  for (let i = 0; i < 5; i++) {
+    const b = el("button"); b.type = "button"; const img = el("img"); img.alt = ""; if (id) img.src = `/api/still/${id}/${i}`; b.append(img, el("span", "t", ""));
+    b.onclick = () => { if (v.duration) { v.currentTime = (i + 0.5) / 5 * v.duration; v.play().catch(() => {}); } };
+    film.append(b);
+  }
+  v.onloadedmetadata = () => { [...film.children].forEach((b, i) => b.querySelector(".t").textContent = ((i + 0.5) / 5 * v.duration).toFixed(1) + "s"); };
+  v.ontimeupdate = () => { if (!v.duration) return; const k = Math.min(4, Math.floor(v.currentTime / v.duration * 5)); [...film.children].forEach((b, i) => b.classList.toggle("on", i === k)); };
+  $("d-mark").replaceWith(Object.assign(mark(status), { id: "d-mark" }));
+  $("d-title").textContent = { confirmed: "Confirmed", rejected: c.verdict === "NO" ? "Rejected by Cosmos Reason" : "Rejected on quality", unverified: "Unverified" }[status];
+  $("d-sub").textContent = camName(c.camera_id) + (status === "confirmed" ? " · Cosmos answered yes" : " · " + humanReason(c));
+  const rq = $("d-reasoning"); rq.textContent = c.reasoning || "No reasoning returned."; rq.append(el("cite", null, "Cosmos Reason, looking at this clip"));
+  const L = c.labels || {}, dl = $("d-labels"); dl.replaceChildren();
+  const show = [["Actors", Array.isArray(L.actors) ? L.actors.join(", ") : L.actors], ["Action", L.action], ["Distance", L.distance_class], ["Lighting", L.lighting], ["Weather", L.weather], ["Occlusion", L.occlusion], ["Fully visible", L.event_fully_visible === true ? "Yes" : L.event_fully_visible === false ? "No" : null]];
+  for (const [k, val] of show) if (val != null && val !== "" && val !== "unknown") dl.append(el("dt", null, k), el("dd", null, String(val).replace(/_/g, " ")));
+  if (!dl.children.length) dl.append(el("dt", null, "Labels"), el("dd", null, "none extracted"));
+  const q = c.quality || {}, det = q.detections || {}, qb = $("d-quality"); qb.replaceChildren();
+  $("d-qscore").textContent = q.score != null ? Math.round(q.score * 100) + " / 100" : "";
+  const blur = q.blur || 0, sharp = Math.min(1, blur / 200);
+  qb.append(meter("Sharpness", sharp, blur ? "lap " + Math.round(blur) : "n/a", sharp > .5 ? "good" : sharp > .25 ? "mid" : "bad"));
+  const rel = (det.relevant || []).length, cls = (det.classes || []).length;
+  qb.append(meter("Detections", det.present ? (rel ? 1 : cls ? .6 : .4) : .35, det.present ? ((det.relevant && det.relevant.length ? det.relevant : det.classes) || []).slice(0, 3).join(", ") || "none" : "no sidecar", det.present && rel ? "good" : "mid"));
+  qb.append(meter("Completeness", L.event_fully_visible === true ? 1 : L.event_fully_visible === false ? .2 : .5, L.event_fully_visible === true ? "full event" : L.event_fully_visible === false ? "cut off" : "unknown", L.event_fully_visible === true ? "good" : L.event_fully_visible === false ? "bad" : "mid"));
+  qb.append(meter("Search match", Math.min(1, (c.similarity || 0) / 0.6), (c.similarity || 0).toFixed(2), ""));
+  const cap = $("d-caption"); cap.textContent = c.caption || ""; cap.hidden = !c.caption; if (c.caption) cap.append(el("cite", null, "Pipeline caption at ingest time (what search saw)"));
+  const tm = c.timings || {}, t0 = c.start_time, t1 = c.end_time;
+  $("d-fine").textContent = [c.filename, t0 != null && t1 != null ? `${t0} – ${t1}` : null, tm.verify_s ? `verified in ${tm.verify_s}s` : null].filter(Boolean).join(" · ");
+  $("sheet").showModal(); v.play().catch(() => {});
+}
+function meter(k, frac, v, tone) { const m = el("div", "meter"); m.append(el("span", "k", k)); const b = el("div", "b"); const i = el("i", tone); i.style.width = Math.round(frac * 100) + "%"; b.append(i); m.append(b, el("span", "v", v)); return m; }
+$("d-close").onclick = () => $("sheet").close();
+$("sheet").addEventListener("click", ev => { if (ev.target === $("sheet")) $("sheet").close(); });
+$("sheet").addEventListener("close", () => { const v = $("d-video"); v.pause(); v.removeAttribute("src"); v.load(); });
+
+/* ---------- export ---------- */
+$("export").onclick = async () => {
   try {
+    $("export").disabled = true; toast("Packaging clips, labels and the dataset card…");
     const r = await post("/api/runs/" + runId + "/export");
     const a = el("a"); a.href = URL.createObjectURL(await r.blob()); a.download = "edgecase-" + runId + ".zip"; a.click();
-  } catch (e) { $("error").textContent = e.message; }
-});
+    toast("Dataset downloaded");
+  } catch (e) { toast(e.message, true); } finally { $("export").disabled = false; }
+};
 
-$("propose").addEventListener("click", async () => {
+/* ---------- loop ---------- */
+$("prompt").addEventListener("input", () => $("prompt-len").textContent = $("prompt").value.length + " / 800");
+let typeTimer = null;
+function typewrite(text) {   // the agent's prompt appears as if being written, ~1 s for a full prompt
+  clearInterval(typeTimer); const ta = $("prompt"); ta.value = ""; let i = 0;
+  const step = Math.max(3, Math.ceil(text.length / 90));
+  typeTimer = setInterval(() => { i = Math.min(text.length, i + step); ta.value = text.slice(0, i); ta.dispatchEvent(new Event("input")); if (i >= text.length) clearInterval(typeTimer); }, 12);
+}
+$("propose").onclick = async () => {
+  const card = $("improve");
   try {
+    $("propose").disabled = true; card.classList.add("thinking"); $("improve-sub").textContent = "Reading the near misses and writing a better prompt…";
+    card.scrollIntoView({ behavior: "smooth", block: "start" });
     const p = await (await post("/api/runs/" + runId + "/loop/propose")).json();
-    $("prompt").value = p.prompt;
-    $("chunks").replaceChildren(...p.chunks.map(c => { const l = el("label"), b = el("input"); b.type = "checkbox"; b.checked = true; b.value = c; l.append(b, " " + c); const d = el("div"); d.append(l); return d; }));
-    $("proposal").hidden = false; $("approve").disabled = !p.chunks.length;
-  } catch (e) { $("error").textContent = e.message; }
-});
-
-$("approve").addEventListener("click", async () => {
-  const chunks = [...document.querySelectorAll("#chunks input:checked")].map(b => b.value);
+    const near = $("near"); near.replaceChildren(); let i = 0;
+    for (const nm of (p.near_misses || []).slice(0, 4)) {
+      const c = Object.values(cardsById).find(x => x.source === nm.source); if (!c) continue;
+      const b = el("button", "nm"); b.type = "button"; b.style.setProperty("--i", i++); const img = el("img"); img.alt = ""; const id = safeId(c.clip_id); if (id) img.src = "/api/still/" + id + "/2";
+      b.append(img, el("span", null, humanReason(c))); b.onclick = () => openSheet(c); near.append(b);
+    }
+    $("near-block").hidden = !near.children.length;
+    $("chunks").replaceChildren(...p.chunks.map((ch, k) => { const l = el("label", "toggle"); l.style.setProperty("--i", k); const b = el("input"); b.type = "checkbox"; b.checked = true; b.value = ch; l.append(b, el("code", null, ch.split("/").pop())); return l; }));
+    $("approve").disabled = !p.chunks.length;
+    $("improve-sub").textContent = `A superset prompt and ${p.chunks.length} video${p.chunks.length === 1 ? "" : "s"} to re-index. Approve to run it.`;
+    $("proposal").hidden = false; $("propose").hidden = true;
+    typewrite(p.prompt);
+  } catch (e) { toast(e.message, true); } finally { $("propose").disabled = false; card.classList.remove("thinking"); }
+};
+$("cancel").onclick = () => { $("proposal").hidden = true; $("propose").hidden = false; };
+$("approve").onclick = async () => {
+  const chunks = [...$("chunks").querySelectorAll("input:checked")].map(b => b.value);
+  if (!chunks.length) return toast("Pick at least one video to re-index", true);
   try {
     await post("/api/runs/" + runId + "/loop/approve", { prompt: $("prompt").value, chunks });
     $("proposal").hidden = true; lastKey = "";
-    clearInterval(timer); timer = setInterval(poll, 1500); poll();
-  } catch (e) { $("error").textContent = e.message; }
-});
+    toast("Re-indexing started. A few minutes.");
+    clearInterval(timer); timer = setInterval(poll, 2000); poll();
+  } catch (e) { toast(e.message, true); }
+};
 
 loadCameras();
 </script>
