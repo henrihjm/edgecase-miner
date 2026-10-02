@@ -11,4 +11,8 @@ gaps, and re-ingests with a better prompt when too little is found.
 **Supplementary:** none
 
 ## Feedback
-NOT PROVIDED
+The logistics were great and the AWS Builder Loft is a great space. Setting up the VM took some
+time and was not intuitive. Restricting the team sizes would have been good to know beforehand.
+I was happy to receive Cursor credits for this project, thank you! Overall the communication at
+the event worked great: Luma, email, hack page, live guidance and partners, all great. The Cursor
+and X people were great and super helpful.
