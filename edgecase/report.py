@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from typing import Any
 
@@ -65,11 +66,29 @@ def empty_cells(coverage: dict[str, Any]) -> list[str]:
     return cells
 
 
+OUTDOOR_WORDS = ("day", "dusk", "night", "weather", "rain", "snow", "fog", "sunny", "dawn")
+
+
+def _drop_outdoor_asks(gaps: dict[str, Any]) -> dict[str, Any]:
+    """Indoor-only searches: a small LLM still asks for night or rain footage. Strip those lines."""
+    def keep(text: str) -> bool:
+        words = set(re.findall(r"[a-z]+", text.lower()))
+        return not words & set(OUTDOOR_WORDS)
+    sentences = re.findall(r"[^.!?]+[.!?]*", gaps.get("gap_report", ""))
+    report = " ".join(x.strip() for x in sentences if keep(x)).strip()
+    plan = [line for line in gaps.get("collection_plan", []) if keep(line)]
+    return {**gaps, "gap_report": report or "No lighting or weather gaps apply to indoor cameras.",
+            "collection_plan": plan or ["Collect more varied indoor footage of the requested event."]}
+
+
 def build_report(result: MineResult, llm: LLMClient) -> dict[str, Any]:
     cameras = result.camera_ids or result.all_cameras
     coverage = build_coverage(result.confirmed, cameras)
     cells = empty_cells(coverage)
-    return {"coverage": coverage, "empty_cells": cells, **llm.gap_report(result.request, coverage, cells)}
+    gaps = llm.gap_report(result.request, coverage, cells)
+    if cameras and all(any(h in c.lower() for h in INDOOR_HINTS) for c in cameras):
+        gaps = _drop_outdoor_asks(gaps)
+    return {"coverage": coverage, "empty_cells": cells, **gaps}
 
 
 def coverage_table_md(coverage: dict[str, Any]) -> str:

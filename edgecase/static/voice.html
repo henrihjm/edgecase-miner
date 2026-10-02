@@ -239,7 +239,9 @@ async function present(run) {
   if (!confirmed.length) {
     await speak("I checked " + n.verified + " candidates and could not confirm a single one for this request. That is itself the finding. Let me show you what is missing and how I would change the indexing.");
   } else {
-    const c = confirmed[0], L = c.labels || {};
+    // The example to talk about: closest interaction first, then quality, then similarity.
+    const rank = c => (["contact","under_2m"].includes((c.labels||{}).distance_class) ? 2 : (c.labels||{}).distance_class === "2_to_5m" ? 1 : 0) * 10 + ((c.quality && c.quality.score) || 0);
+    const c = [...confirmed].sort((a, b) => rank(b) - rank(a) || b.similarity - a.similarity)[0], L = c.labels || {};
     show(["s-run","s-hero"]);
     const h = $("hero"); h.replaceChildren();
     const v = el("video"); v.src = "/api/clip/" + c.clip_id; v.controls = true; v.muted = true; v.autoplay = true; v.loop = true; h.append(v);
