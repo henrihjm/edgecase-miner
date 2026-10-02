@@ -62,7 +62,7 @@ High search signal already; short clips; good for end-to-end verify/quality befo
 
 - Search warehouse top5: ~2.5–3s; Phase 1 search top40 warehouse: ~7–11s
 - Cosmos verify / clip: **~2.5s** wall amortized at concurrency 2 (warehouse short clips); full 20-clip pass ~50s verify wall / ~58s total
-- Re-ingest / chunk: TBD Phase 3
+- Re-ingest / chunk: ~31 s (2 chunks in 62 s); whole loop iteration 78 s
 
 ### Phase 1 warehouse run (`forklift near a person`, verify=20)
 
@@ -109,4 +109,19 @@ environment when `/config` is absent.
   a prompt and two chunks. The re-ingest itself was NOT run: it needs Henri's yes.
 - `unzip` is not installed on the VM; use `python -m zipfile -l exports/<name>.zip` to list a zip.
 
-Still open: one real re-ingest iteration (and its timing), README screenshots.
+### First live re-ingest (2026-10-02, 2:02 PM PDT, approved by Henri)
+
+Request `pallet blocking an aisle`, warehouse group, verify 10. Two chunks re-ingested with the
+superset prompt (`reingest_log.jsonl`).
+
+- Re-ingest of 2 chunks (2 clips each): **62 s**. Whole iteration incl. search + verify: **78 s**.
+  Fast enough to run live in the demo.
+- Before: 2 candidates, 0 confirmed. After: 3 candidates, 0 confirmed, 1 unverified. The archive
+  most likely has no pallet actually blocking an aisle; the gap report is the honest answer here.
+- The first proposed prompt copied one clip's specifics ("a black forklift named ATLAS"); fixed so
+  the general description is always prepended and the model writes only the specific part.
+
+For the demo, the loop story works best on a request with near-misses, e.g. `person in a walkway`
+(weak captions, real clips exist). Second iteration was declined.
+
+Still open: README screenshots.
