@@ -9,60 +9,70 @@
   const sentences = (t, n) => ((t || "").match(/[^.!?]+[.!?]*/g) || []).slice(0, n).join(" ").trim();
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-  /* ---------- panel ---------- */
+  /* ---------- a quiet orb in the corner; the assistant talks, you press Space to talk back ---------- */
   const css = `
-  #eca { position:fixed; right:20px; bottom:20px; width:min(520px, calc(100vw - 40px)); z-index:1000; background:#0e0f12; color:#f4f4f6;
-         border:1px solid #2a2c33; border-radius:16px; box-shadow:0 12px 40px rgba(0,0,0,.45); font:17px/1.4 system-ui, sans-serif; }
-  #eca.min { width:auto; } #eca.min > :not(#eca-head) { display:none; }
-  #eca-head { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid #2a2c33; cursor:pointer; }
-  #eca-head b { flex:1; font-weight:600; } #eca-head span { color:#9a9ca6; font-size:14px; }
-  #eca-say { padding:14px 16px; font-size:20px; line-height:1.4; min-height:4.2em; max-height:34vh; overflow:auto; }
-  #eca-say.speaking::after { content:" ▍"; color:#60a5fa; animation:eca-blink 1s infinite; } @keyframes eca-blink { 50% { opacity:0; } }
-  #eca-hero { display:none; padding:0 16px 10px; } #eca-hero video { width:100%; border-radius:10px; background:#000; }
-  #eca-hero.on { display:block; }
-  #eca-ctl { display:flex; gap:10px; align-items:center; padding:10px 14px 14px; flex-wrap:wrap; }
-  #eca button { font:inherit; font-weight:600; border:1px solid #f4f4f6; border-radius:999px; background:#f4f4f6; color:#0e0f12; padding:8px 16px; cursor:pointer; }
-  #eca button.sec { background:transparent; color:#f4f4f6; } #eca button:disabled { opacity:.4; cursor:default; }
-  #eca-mic { width:52px; height:52px; padding:0 !important; border-radius:50% !important; display:grid; place-items:center; }
-  #eca-mic.on { background:#f87171 !important; border-color:#f87171 !important; color:#fff; animation:eca-pulse 1.2s infinite; } @keyframes eca-pulse { 50% { transform:scale(1.08); } }
-  #eca-mic.off { opacity:.35; }
-  #eca-typed { flex:1 1 160px; font:inherit; padding:8px 12px; border:1px solid #2a2c33; border-radius:10px; background:#15171c; color:#f4f4f6; min-width:120px; }
-  #eca-note { width:100%; color:#9a9ca6; font-size:14px; }
-  #eca-yn { display:none; gap:10px; } #eca-yn.on { display:flex; }
-  .eca-focus { outline:3px solid #60a5fa; outline-offset:8px; border-radius:8px; transition:outline-color .3s; }
-  .eca-filled { box-shadow:0 0 0 3px #60a5fa !important; transition:box-shadow .3s; }`;
+  #eca { position:fixed; right:28px; bottom:28px; z-index:900; display:flex; flex-direction:column; align-items:flex-end; gap:10px; font:inherit; color:var(--ink, #1d1d1f); pointer-events:none; }
+  #eca-orb { position:relative; width:56px; height:56px; border-radius:50%; cursor:pointer; pointer-events:auto;
+    background:radial-gradient(circle at 35% 35%, #b9dcff, var(--blue, #0071e3) 72%); box-shadow:0 8px 24px rgba(0,113,227,.25);
+    transition:transform .3s var(--ease, ease), background .4s, box-shadow .4s; }
+  #eca-orb::before, #eca-orb::after { content:""; position:absolute; inset:0; border-radius:50%; border:1.5px solid rgba(0,113,227,.35); opacity:0; }
+  #eca.talking #eca-orb { animation:eca-breathe 1.8s ease-in-out infinite; }
+  #eca.talking #eca-orb::before { animation:eca-ring 1.8s ease-out infinite; }
+  #eca.talking #eca-orb::after { animation:eca-ring 1.8s ease-out .6s infinite; }
+  #eca.waiting #eca-orb { animation:eca-breathe 3.2s ease-in-out infinite; }
+  #eca.listening #eca-orb { background:radial-gradient(circle at 35% 35%, #ffc9c4, var(--red, #ff3b30) 72%); box-shadow:0 8px 24px rgba(255,59,48,.3); animation:eca-breathe .9s ease-in-out infinite; }
+  #eca.listening #eca-orb::before { border-color:rgba(255,59,48,.4); animation:eca-ring .9s ease-out infinite; }
+  #eca.thinking #eca-orb { animation:eca-spin 1.2s linear infinite; background:conic-gradient(from 0deg, #b9dcff, var(--blue, #0071e3), #b9dcff); }
+  #eca.off #eca-orb { background:radial-gradient(circle at 35% 35%, #e8e8ed, #c7c7cc 72%); box-shadow:0 6px 18px rgba(0,0,0,.12); }
+  @keyframes eca-breathe { 50% { transform:scale(1.06); } }
+  @keyframes eca-ring { 0% { transform:scale(1); opacity:.6; } 100% { transform:scale(1.9); opacity:0; } }
+  @keyframes eca-spin { to { transform:rotate(360deg); } }
+  #eca-hint { font-size:12px; letter-spacing:.02em; color:var(--ink-2, #6e6e73); background:rgba(255,255,255,.8); -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px);
+    border:1px solid rgba(0,0,0,.06); border-radius:980px; padding:5px 11px; opacity:0; transform:translateY(4px); transition:opacity .3s, transform .3s; white-space:nowrap; }
+  #eca-hint.on { opacity:1; transform:none; }
+  #eca-hint kbd { font:inherit; font-size:11px; padding:1px 6px; border-radius:6px; border:1px solid rgba(0,0,0,.12); background:#fff; color:var(--ink, #1d1d1f); margin:0 2px; }
+  #eca-cap { display:none; max-width:360px; font-size:14px; line-height:1.4; color:var(--ink, #1d1d1f); background:rgba(255,255,255,.9); -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px);
+    border:1px solid rgba(0,0,0,.06); border-radius:14px; padding:10px 14px; text-align:right; }
+  #eca.silent #eca-cap { display:block; }
+  #eca-hero { display:none; } #eca-hero.on { display:block; width:340px; border-radius:14px; overflow:hidden; box-shadow:0 24px 60px rgba(0,0,0,.18); background:#000; }
+  #eca-hero video { width:100%; display:block; }
+  .eca-focus { outline:2px solid rgba(0,113,227,.55); outline-offset:10px; border-radius:12px; transition:outline-color .3s; }
+  .eca-filled { box-shadow:0 0 0 3px rgba(0,113,227,.25) !important; transition:box-shadow .3s; }`;
   document.head.append(Object.assign(el("style"), { textContent: css }));
 
-  const panel = el("div"); panel.id = "eca";
-  panel.innerHTML = `
-    <div id="eca-head"><b>Voice assistant</b><span id="eca-state">off</span><span>▾</span></div>
-    <div id="eca-say">I can run this dashboard for you: say what dataset you need and I will search, verify, show you the clips, the gaps, and how to improve the indexing. You can type or click at any time.</div>
-    <div id="eca-hero"></div>
-    <div id="eca-ctl">
-      <button id="eca-start">Start</button>
-      <button id="eca-mic" class="sec" hidden aria-label="Microphone"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg></button>
-      <input id="eca-typed" type="text" placeholder="…or type here" maxlength="300" hidden>
-      <div id="eca-yn"><button id="eca-yes">Yes</button><button id="eca-no" class="sec">No</button></div>
-      <div id="eca-note"></div>
-    </div>`;
+  const panel = el("div"); panel.id = "eca"; panel.className = "off";
+  panel.innerHTML = `<div id="eca-hero"></div><div id="eca-cap"></div><div id="eca-hint" class="on">Press <kbd>space</kbd> to talk to me</div><div id="eca-orb" title="Press space"></div>`;
   document.body.append(panel);
-  $("eca-head").addEventListener("click", () => panel.classList.toggle("min"));
-  const note = t => { $("eca-note").textContent = t; };
-  const state = t => { $("eca-state").textContent = t; };
-
-  let runId = null, busy = false;
+  const hint = html => { const h = $("eca-hint"); if (!html) { h.classList.remove("on"); return; } h.innerHTML = html; h.classList.add("on"); };
+  const mode = m => { const silentNow = panel.classList.contains("silent"); panel.className = m + (silentNow ? " silent" : ""); };
+  let runId = null, busy = false, started = false;
 
   /* ---------- speech out ---------- */
   let speaking = null;
+  let serverTts = null;   // null: unknown, true/false once probed
+  const FEMALE = /Google US English|Samantha|Aria|Jenny|Ava|Allison|Zira|Karen|Moira|Fiona|Tessa|Victoria|Susan|female|Natural/i;
+  async function speakServer(text) {
+    if (serverTts === false) return false;
+    try {
+      const r = await fetch("/api/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+      if (r.status === 404) { serverTts = false; return false; }
+      if (!r.ok) return false;
+      serverTts = true;
+      const url = URL.createObjectURL(await r.blob());
+      await new Promise(res => { const a = new Audio(url); speak.cancel = () => { a.pause(); res(); }; a.onended = res; a.onerror = res; a.play().catch(res); });
+      URL.revokeObjectURL(url); return true;
+    } catch (e) { return false; }
+  }
   function speak(text) {
-    $("eca-say").textContent = text; $("eca-say").classList.add("speaking");
-    return (speaking = new Promise(resolve => {
-      const done = () => { $("eca-say").classList.remove("speaking"); resolve(); };
+    $("eca-cap").textContent = text; mode("talking");
+    return (speaking = new Promise(async resolve => {
+      const done = () => { panel.classList.remove("talking"); resolve(); };
+      if (await speakServer(text)) return done();
       const synth = window.speechSynthesis;
-      if (!synth) return setTimeout(done, Math.max(1500, text.split(/\s+/).length * 330));
+      if (!synth) { panel.classList.add("silent"); return setTimeout(done, Math.max(1500, text.split(/\s+/).length * 330)); }
       synth.cancel();
       const parts = text.match(/[^.!?]+[.!?]*/g) || [text];
-      let i = 0, started = false, cancelled = false;
+      let i = 0, begun = false, cancelled = false;
       const words = text.split(/\s+/).length, guard = setTimeout(done, Math.max(2000, words * 450));
       speak.cancel = () => { cancelled = true; clearTimeout(guard); synth.cancel(); done(); };
       const next = () => {
@@ -70,12 +80,12 @@
         if (i >= parts.length) { clearTimeout(guard); return done(); }
         const u = new SpeechSynthesisUtterance(parts[i++].trim());
         const vs = synth.getVoices();
-        u.voice = vs.find(v => /^en/i.test(v.lang) && /Google|Samantha|Daniel|Natural/i.test(v.name)) || vs.find(v => /^en/i.test(v.lang)) || null;
-        u.rate = 1.02; u.onstart = () => { started = true; }; u.onend = next; u.onerror = next; synth.speak(u);
+        u.voice = vs.find(v => /^en/i.test(v.lang) && FEMALE.test(v.name)) || vs.find(v => /^en/i.test(v.lang)) || null;
+        u.rate = 0.98; u.pitch = 1.05; u.onstart = () => { begun = true; }; u.onend = next; u.onerror = next; synth.speak(u);
       };
       next();
       // No audio device (e.g. a remote desktop): the utterance never starts. Fall back to caption reading time.
-      setTimeout(() => { if (!started && !cancelled) { synth.cancel(); clearTimeout(guard); setTimeout(done, Math.max(800, words * 260 - 1500)); } }, 1500);
+      setTimeout(() => { if (!begun && !cancelled) { panel.classList.add("silent"); synth.cancel(); clearTimeout(guard); setTimeout(done, Math.max(800, words * 260 - 1500)); } }, 1500);
     }));
   }
 
@@ -111,43 +121,48 @@
   }
   async function listenOnce() {
     if (micOk === false) return null;
-    $("eca-mic").classList.add("on"); state("listening"); note("Listening… I stop when you pause. Or type below.");
+    mode("listening"); hint("Listening… I stop when you pause");
     let blob;
     try { blob = await record(); micOk = true; }
-    catch (e) { micOk = false; $("eca-mic").classList.add("off"); note("No microphone here. Type your answer below."); $("eca-mic").classList.remove("on"); state("ready"); return null; }
-    $("eca-mic").classList.remove("on"); state("transcribing"); note("Transcribing with Canary-1B…");
+    catch (e) { micOk = false; mode("waiting"); hint("No microphone · <kbd>enter</kbd> yes · <kbd>esc</kbd> no"); return null; }
+    mode("thinking"); hint("One moment…");
     try {
       const fd = new FormData(); fd.append("file", blob, "speech.wav");
       const r = await fetch("/api/transcribe", { method: "POST", body: fd });
       if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
-      const { text } = await r.json(); note(""); state("ready"); return text;
-    } catch (e) { note("Could not transcribe (" + e.message + "). Type instead."); state("ready"); return null; }
+      const { text } = await r.json(); mode("waiting"); hint(""); return text;
+    } catch (e) { mode("waiting"); hint("I couldn't hear that · <kbd>space</kbd> to try again"); return null; }
   }
 
-  /* ---------- getting an answer: voice, typed box, or yes/no buttons ---------- */
-  let pending = null, early = null;   // early: typed while the assistant was still talking
+  /* ---------- answers: Space to talk, Enter = yes / all, Esc = no. The page's own inputs keep working. ---------- */
+  let pending = null, early = null, yesNoQuestion = false;
   function waitForAnswer(yesNo) {
     if (early) { const v = early; early = null; return Promise.resolve(v); }
-    $("eca-yn").classList.toggle("on", !!yesNo);
+    yesNoQuestion = !!yesNo; mode("waiting");
+    hint(yesNo ? "<kbd>space</kbd> answer · <kbd>enter</kbd> yes · <kbd>esc</kbd> no" : "<kbd>space</kbd> to answer" + (micOk === false ? " · <kbd>enter</kbd> for all" : ""));
     return new Promise(resolve => {
-      pending = { resolve: v => { pending = null; $("eca-yn").classList.remove("on"); resolve(v); } };
-      listenOnce().then(t => { if (t && pending) pending.resolve(t); });
+      pending = { resolve: v => { pending = null; hint(""); resolve(v); } };
+      if (micOk !== false) listenOnce().then(t => { if (t && pending) pending.resolve(t); });
     });
   }
-  $("eca-typed").addEventListener("keydown", e => {
-    if (e.key !== "Enter" || !$("eca-typed").value.trim()) return;
-    const v = $("eca-typed").value.trim(); $("eca-typed").value = "";
+  function answer(v) {
     if (pending) return pending.resolve(v);
-    if (busy) { early = v; if (speak.cancel) speak.cancel(); return; }   // answer arrived mid-sentence
+    if (busy) { early = v; if (speak.cancel) speak.cancel(); return; }
     newRequest(v);
+  }
+  const typingInPage = () => /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName) || !!(document.activeElement || {}).isContentEditable;
+  document.addEventListener("keydown", async e => {
+    if (typingInPage() || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.code === "Space") {
+      e.preventDefault();
+      if (!started) return start();
+      if (rec) return rec.stop();
+      if (pending && micOk !== false) return;             // already listening for this question
+      const t = await listenOnce(); if (t) answer(t);
+    } else if (e.key === "Enter" && (pending || busy)) { e.preventDefault(); answer(yesNoQuestion ? "yes" : "all"); }
+    else if (e.key === "Escape" && (pending || busy)) { e.preventDefault(); answer("no"); }
   });
-  $("eca-yes").addEventListener("click", () => pending && pending.resolve("yes"));
-  $("eca-no").addEventListener("click", () => pending && pending.resolve("no"));
-  $("eca-mic").addEventListener("click", async () => {
-    if (rec) return rec.stop();
-    if (pending) return;                                   // already listening for the pending question
-    const t = await listenOnce(); if (t) newRequest(t);
-  });
+  $("eca-orb").addEventListener("click", async () => { if (!started) return start(); if (rec) return rec.stop(); if (!pending || micOk === false) { const t = await listenOnce(); if (t) answer(t); } });
   const isYes = t => /^(yes|yeah|yep|sure|ok|okay|go|do it|approve|please)/i.test((t || "").trim());
 
   /* ---------- API ---------- */
@@ -187,10 +202,10 @@
 
   /* ---------- the conversation ---------- */
   async function start() {
-    $("eca-start").hidden = true; $("eca-mic").hidden = false; $("eca-typed").hidden = false; state("ready");
-    await speak("Hi, I am Edge-Case Miner. Tell me in one sentence the event you need training data for, like: forklift passing close to a person. " +
-      "I will search the indexed video, check every candidate with Cosmos Reason, label and score it, and show you the clips, the gaps, and how to improve the indexing. " +
-      "What kind of dataset are you looking for?");
+    if (started) return; started = true; hint("");
+    await speak("Hi there! I'm Edge-Case Miner, and I'd love to help you build a dataset. Just tell me, in one sentence, the moment you need training data for, " +
+      "something like: a forklift passing close to a person. I'll search the video archive, check every candidate with Cosmos Reason, label and score it, " +
+      "and then walk you through what I found and what's still missing. So, what kind of dataset are you looking for?");
     const t = await waitForAnswer(false);
     newRequest(t);
   }
@@ -205,32 +220,62 @@
       const groups = [];
       if (cams.length) {
         const names = cams.map(c => c.name || c.id);
-        await speak("I heard: " + text + ". Which camera groups should I search: all of them, or some of " + names.slice(0, 6).join(", ") + "?");
+        await speak("Great choice! I heard: " + text + ". Which camera groups would you like me to search? All of them, or some of " + names.slice(0, 6).join(", ") + "?");
         const g = (await waitForAnswer(false) || "").toLowerCase();
         if (g && !/^(all|every|any|no|none|whatever)/.test(g.trim()))
           for (const c of cams) { const words = ((c.name || "") + " " + c.id).toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2);
             if (words.some(w => g.includes(w))) groups.push(c.id); }
         page.setGroups(groups);
       }
-      await speak("I will search " + (groups.length ? groups.map(id => (cams.find(c => c.id === id) || {}).name || id).join(" and ") : "every camera group") +
-        " for: " + text + ". Shall I start?");
+      await speak("Perfect. I'll search " + (groups.length ? groups.map(id => (cams.find(c => c.id === id) || {}).name || id).join(" and ") : "every camera group") +
+        " for: " + text + ". Shall I go ahead?");
       const a = await waitForAnswer(true);
-      if (!isYes(a)) { await speak("Okay. Tell me the request again, or type it."); busy = false; const t = await waitForAnswer(false); return newRequest(t); }
+      if (!isYes(a)) { await speak("No problem at all. Just tell me the request again, or type it, and we'll take it from there."); busy = false; const t = await waitForAnswer(false); return newRequest(t); }
       runId = (await (await post("/api/mine", { request: text, groups })).json()).id;
       page.attach(runId, text, groups);
-      speak("Searching every camera group, then verifying each candidate with Cosmos Reason. About a minute.");
+      speak("On it! I'm searching the archive now, and then I'll check each candidate with Cosmos Reason. This takes about a minute, you can watch the steps on the page.");
       let run;
       while (true) {
         await sleep(1500);
         run = await (await api("/api/runs/" + runId)).json();
-        const n = run.counts || {}; state(run.stage + " · " + (n.verified || 0) + " verified, " + (n.confirmed || 0) + " confirmed");
+        mode("thinking");
         if (run.error) { await speak("Something failed: " + run.error); busy = false; return; }
         if (run.stage === "done") break;
       }
       await present(run);
-    } catch (e) { note(e.message); await speak("That did not work: " + e.message); }
+    } catch (e) { await speak("Hmm, that did not work: " + e.message); }
     busy = false;
   }
+
+  // Runs started from the page's own box are narrated too: wrap the page's startRun once it exists.
+  async function follow(id) {
+    if (busy || !started) return;
+    busy = true; runId = id;
+    try {
+      let run;
+      while (true) {
+        await sleep(1500); run = await (await api("/api/runs/" + runId)).json(); mode("thinking");
+        if (run.error || run.stage === "done") break;
+      }
+      if (!run.error) await present(run);
+    } catch (e) {}
+    busy = false;
+  }
+  function hookPage() {
+    try {
+      if (typeof startRun === "function" && !startRun.__eca) {
+        const orig = startRun;
+        startRun = function (request, groups) {
+          const r = orig.apply(this, arguments);
+          const pageRunId = (0, eval)("typeof runId !== 'undefined' ? runId : null");   // the page's own run id
+          if (!busy && pageRunId) setTimeout(() => { try { follow(pageRunId); } catch (e) {} }, 0);
+          return r;
+        };
+        startRun.__eca = true;
+      }
+    } catch (e) {}
+  }
+  hookPage(); document.addEventListener("DOMContentLoaded", hookPage);
 
   const rank = c => (["contact", "under_2m"].includes((c.labels || {}).distance_class) ? 2 : (c.labels || {}).distance_class === "2_to_5m" ? 1 : 0) * 10 + ((c.quality && c.quality.score) || 0);
   async function present(run) {
@@ -244,58 +289,57 @@
         hero.classList.add("on");
         const v = el("video"); v.src = "/api/clip/" + c.clip_id; v.controls = true; v.muted = true; v.autoplay = true; v.loop = true; hero.append(v);
       }
-      await speak("Here is one example from " + (c.camera || c.camera_id) + ". Cosmos Reason watched it and said: " + sentences(c.reasoning, 2) +
+      await speak("Here's a lovely example from " + (c.camera || c.camera_id) + ". Cosmos Reason watched it and said: " + sentences(c.reasoning, 2) +
         " Labels: " + [L.action, L.distance_class && "distance " + L.distance_class.replace(/_/g, " "), L.lighting].filter(Boolean).join(", ") + ".");
       hero.classList.remove("on"); page.hideClip();
       page.filter("rejected"); page.section("rejected", "grid");
       await speak("Altogether I confirmed " + n.confirmed + " clips and rejected " + n.rejected + (n.unverified ? ", with " + n.unverified + " unverified" : "") +
-        ". Rejected means Cosmos said the event is not there, or the quality was too low. Every clip was checked, not just matched.");
+        ". Rejected means Cosmos said the event isn't actually there, or the quality was too low. So every clip you see was really checked, not just matched.");
     } else {
-      await speak("I checked " + n.verified + " candidates and could not confirm one. That is a finding in itself.");
+      await speak("I checked " + n.verified + " candidates and couldn't confirm a single one. That's actually a useful finding in itself, let me show you what's missing.");
     }
     const rep = run.report || {};
     page.filter("confirmed"); page.section("coverage", "heat", "gaps");
-    await speak("What is missing: " + sentences(rep.gap_report, 2) + (rep.collection_plan && rep.collection_plan.length ? " Next I would " + rep.collection_plan.slice(0, 2).join(", and ").toLowerCase() : ""));
+    await speak("Now, what's missing. " + sentences(rep.gap_report, 2) + (rep.collection_plan && rep.collection_plan.length ? " If I were you, I'd " + rep.collection_plan.slice(0, 2).join(", and ").toLowerCase() : ""));
     await improve(run);
   }
   async function improve(run) {
-    await speak("To find more, I can rewrite the ingestion prompt: the prompt decides what the captioner writes, and the captions decide what search can find. " +
-      "General description first, then distances, lighting and the event itself. Then I re-index the chunks that came closest and search again.");
+    await speak("Want to find more? Here's my favourite trick: I can rewrite the ingestion prompt. The prompt decides what the captioner writes, and the captions decide what search can find. " +
+      "I keep a general description first, then ask for distances, lighting and the event itself. Then I re-index the videos that came closest and search again.");
     let proposal;
     try { proposal = await (await post("/api/runs/" + runId + "/loop/propose")).json(); } catch (e) { await speak("I could not prepare a proposal: " + e.message); return offerExport(run); }
     if ($("propose") && typeof $("propose").onclick === "function") page.propose();     // redesigned page renders it
     else { const box = $("prompt"); if (box && "value" in box) box.value = proposal.prompt; const prop = $("proposal"); if (prop) prop.hidden = false; }
     page.section("improve", "loop-note");
-    $("eca-say").textContent = proposal.prompt;
     if (!(run.needs_loop && proposal.chunks.length)) {
-      await speak("Here is the prompt I would use. The target of " + run.target + " confirmed clips is already reached, so no re-ingest is needed this time.");
+      await speak("Here's the prompt I'd use. You've already reached the target of " + run.target + " confirmed clips, so no re-indexing is needed this time. Nice!");
       return offerExport(run);
     }
-    await speak("Here is the prompt. Shall I re-ingest " + proposal.chunks.length + " chunk" + (proposal.chunks.length > 1 ? "s" : "") + " with it and search again? It takes about a minute and a half.");
+    await speak("Here's the prompt. Shall I re-index " + proposal.chunks.length + " video" + (proposal.chunks.length > 1 ? "s" : "") + " with it and search again? It takes about a minute and a half.");
     const a = await waitForAnswer(true);
-    if (!isYes(a)) { await speak("Okay, not re-ingesting."); return offerExport(run); }
+    if (!isYes(a)) { await speak("Sure, we'll leave the index as it is."); return offerExport(run); }
     await post("/api/runs/" + runId + "/loop/approve", { prompt: proposal.prompt, chunks: proposal.chunks });
     const prop = $("proposal"); if (prop) prop.hidden = true;
     page.attach(runId);   // page: poll again
-    speak("Re-ingesting with the new prompt, then searching and verifying again.");
+    speak("Wonderful. Re-indexing with the new prompt, then I'll search and verify again.");
     let r2;
     while (true) {
       await sleep(2000);
       r2 = await (await api("/api/runs/" + runId)).json();
       const it = (r2.loop && r2.loop.iterations || []).slice(-1)[0] || {};
-      state((it.status || "") + " " + (it.jobs || []).map(j => j.progress).join("; "));
+      mode("thinking");
       if (r2.stage === "done") break;
     }
     const it = r2.loop.iterations.slice(-1)[0];
-    await speak("Done in " + Math.round(it.seconds || 0) + " seconds. Confirmed before: " + it.before.confirmed + ". After: " + (it.after ? it.after.confirmed : "unknown") + ".");
+    await speak("All done in " + Math.round(it.seconds || 0) + " seconds! Confirmed clips before: " + it.before.confirmed + ". After: " + (it.after ? it.after.confirmed : "unknown") + ".");
     if (it.after && it.after.confirmed > it.before.confirmed) await present(r2); else await offerExport(r2);
     if (focused) focused.classList.remove("eca-focus");
   }
   async function offerExport(run) {
-    if (!run.counts || !run.counts.confirmed) { await speak("Nothing to export. Tell me another request whenever you like."); return; }
-    await speak("Shall I export the dataset: manifest, labels, clips and a dataset card?");
+    if (!run.counts || !run.counts.confirmed) { await speak("There's nothing to export yet. Tell me another request whenever you like!"); return; }
+    await speak("Would you like me to export the dataset? You'd get the manifest, labels, clips and a dataset card.");
     const a = await waitForAnswer(true);
-    if (isYes(a)) await exportRun(); else await speak("Okay. It stays on screen. Tell me another request whenever you like.");
+    if (isYes(a)) await exportRun(); else await speak("Okay, it stays right here on screen. Tell me another request whenever you like!");
   }
   async function exportRun() {
     if (!runId) return speak("There is no finished run to export yet.");
@@ -304,11 +348,10 @@
         const r = await post("/api/runs/" + runId + "/export");
         const a = el("a"); a.href = URL.createObjectURL(await r.blob()); a.download = "edgecase-" + runId + ".zip"; a.click();
       }
-      await speak("Exported. Tell me another request whenever you like.");
+      await speak("Exported! Tell me another request whenever you like.");
     } catch (e) { await speak("Export failed: " + e.message); }
   }
 
-  $("eca-start").addEventListener("click", start);
   if (window.speechSynthesis) speechSynthesis.getVoices();
   window.edgecaseAssistant = { speak, newRequest, exportRun };
 })();

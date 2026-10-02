@@ -12,7 +12,8 @@ from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
+from pydantic import BaseModel, Field
 
 router = APIRouter()
 STATIC = Path(__file__).parent / "static"
@@ -52,6 +53,35 @@ def dashboard() -> HTMLResponse:
 @router.get("/static/assistant.js")
 def assistant_js() -> FileResponse:
     return FileResponse(STATIC / "assistant.js", media_type="application/javascript")
+
+
+class SpeakRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=1200)
+
+
+@router.post("/api/speak")
+async def speak(body: SpeakRequest) -> Response:
+    """High-quality voice when OPENAI_API_KEY is set; 404 otherwise so the page uses browser voices."""
+    key = os.environ.get("OPENAI_API_KEY", "")
+    if not key:
+        raise HTTPException(404, "no server voice configured")
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.post(
+                "https://api.openai.com/v1/audio/speech",
+                headers={"Authorization": f"Bearer {key}"},
+                json={
+                    "model": os.environ.get("EDGECASE_TTS_MODEL", "gpt-4o-mini-tts"),
+                    "voice": os.environ.get("EDGECASE_TTS_VOICE", "nova"),
+                    "input": body.text,
+                    "instructions": "Warm, extremely friendly and encouraging, clear and unhurried. A helpful product guide.",
+                    "response_format": "mp3",
+                },
+            )
+            r.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, f"voice service failed: {type(exc).__name__}")
+    return Response(content=r.content, media_type="audio/mpeg")
 
 
 @router.post("/api/transcribe")

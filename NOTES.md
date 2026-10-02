@@ -126,7 +126,16 @@ For the demo, the loop story works best on a request with near-misses, e.g. `per
 
 Still open: README screenshots.
 
-## Voice assistant (2026-10-02, 2:30 PM PDT)
+## Voice assistant, current form (2026-10-02, 3:50 PM PDT)
+
+No panel, no transcript: a small orb in the bottom-right corner of the dashboard. Press Space to
+start and to talk (it stops when you pause); Enter = yes (or "all cameras"), Esc = no. The orb
+breathes while she talks, turns red while listening, spins while working. Captions appear only when
+the browser has no working audio (e.g. the VM). Runs started from the page's own search box are
+narrated too. Voice: `/api/speak` with OpenAI `gpt-4o-mini-tts` (voice "nova", warm and friendly)
+when `OPENAI_API_KEY` is set; otherwise the best female browser voice.
+
+## Voice assistant, first form (2026-10-02, 2:30 PM PDT)
 
 `edgecase/static/assistant.js`, served into the dashboard by `voice.py` (which serves `/`). It drives
 the same API as the page: greets, asks for the request, asks which camera groups, confirms, runs,
