@@ -72,7 +72,7 @@ python -m edgecase health                   # backend, models, indexed counts
 python -m edgecase mine "forklift near a person" --groups warehouse --export
 python -m edgecase mine "pedestrian near a vehicle" --groups pie --verify 8 --loop
 python -m edgecase serve                     # web UI on http://127.0.0.1:8000
-#   http://127.0.0.1:8000/voice           # voice guide: it explains itself, listens, shows one clip, then the rest, then the prompt fix
+# The voice assistant lives on the same page: press Start in the panel, or type and click as usual.
 ```
 
 `--loop` and the web UI's "Approve and re-ingest" button are the only ways a re-ingest starts, and

@@ -1,7 +1,8 @@
-"""Voice guide: the /voice page and speech-to-text through the stack's Canary-1B ASR endpoint.
+"""Voice assistant: served into the dashboard, plus speech-to-text through the stack's Canary-1B ASR.
 
-Kept in its own module so the main page can be redesigned independently. The page itself does the
-talking with the browser's speech synthesis; this only turns the user's recorded answer into text.
+Kept in its own module so the page can be redesigned independently. The dashboard is served from here
+with `static/assistant.js` appended; the assistant drives the same API the page uses and tells the page
+about runs it starts with a `edgecase:run` window event.
 """
 
 from __future__ import annotations
@@ -11,12 +12,27 @@ from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 
 router = APIRouter()
 STATIC = Path(__file__).parent / "static"
 CANARY_MODEL = "nvidia/canary-1b"
 MAX_AUDIO_BYTES = 8 * 1024 * 1024  # about 4 minutes of 16 kHz mono PCM
+
+# Attaches the dashboard's own poller to a run the assistant started. Guarded: a redesigned page
+# without these globals simply ignores the event and can listen for it itself.
+ATTACH = """<script src="/static/assistant.js" defer></script>
+<script>
+window.addEventListener("edgecase:run", e => {
+  try {
+    if (typeof runId === "undefined" || typeof poll !== "function") return;
+    runId = e.detail.id; lastKey = "";
+    const p = document.getElementById("progress"); if (p) p.hidden = false;
+    clearInterval(timer); timer = setInterval(poll, 1500); poll();
+  } catch (err) { console.warn("assistant attach:", err); }
+});
+</script>
+"""
 
 
 def canary_url() -> str:
@@ -24,9 +40,16 @@ def canary_url() -> str:
     return os.environ.get("CANARY_1B_URL", f"http://{gpu_host}:8004").rstrip("/")
 
 
-@router.get("/voice")
-def voice_page() -> FileResponse:
-    return FileResponse(STATIC / "voice.html")
+@router.get("/", response_class=HTMLResponse)
+def dashboard() -> HTMLResponse:
+    """The dashboard with the voice assistant appended."""
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(html.replace("</body>", ATTACH + "</body>") if "</body>" in html else html + ATTACH)
+
+
+@router.get("/static/assistant.js")
+def assistant_js() -> FileResponse:
+    return FileResponse(STATIC / "assistant.js", media_type="application/javascript")
 
 
 @router.post("/api/transcribe")

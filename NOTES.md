@@ -125,3 +125,19 @@ For the demo, the loop story works best on a request with near-misses, e.g. `per
 (weak captions, real clips exist). Second iteration was declined.
 
 Still open: README screenshots.
+
+## Voice assistant (2026-10-02, 2:30 PM PDT)
+
+`edgecase/static/assistant.js`, served into the dashboard by `voice.py` (which serves `/`). It drives
+the same API as the page: greets, asks for the request, asks which camera groups, confirms, runs,
+narrates one example clip, then the rest, the gaps, the prompt improvement, asks before re-ingesting
+and before exporting. Nothing moves on screen on its own: it fills the request box, ticks the camera
+boxes, scrolls to and outlines the section it is talking about. The user can type or click at any time.
+
+- Speech in: WAV from the mic to `/api/transcribe` (Canary-1B on the stack); falls back to the typed
+  box. Speech out: browser speech synthesis; captions always.
+- The VM's browser session has NO microphone and NO sound card (ALSA "cannot find card"), so on the
+  VM it runs silently with typed answers. For the real voice demo run the app on a laptop browser.
+- Page contract for the redesign: listen for `window` event `edgecase:run` (`detail.id`) and poll that
+  run; optional ids the assistant uses if present: `request`, `groups`, `confirmed`, `rejected`,
+  `coverage`, `loop-note`, `prompt`, `proposal`.
