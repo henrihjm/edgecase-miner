@@ -59,7 +59,7 @@ reads the single `/config/<team>.config` itself.
 pip install -r requirements.txt
 
 python -m edgecase health --captions        # backend, models, indexed counts, sample captions
-python -m edgecase mine "forklift passing close to a person" --groups warehouse --export
+python -m edgecase mine "forklift near a person" --groups warehouse --export
 python -m edgecase mine "pedestrian crossing in front of a turning car" --groups pie --loop
 python -m edgecase serve                     # web UI on http://127.0.0.1:8000
 ```

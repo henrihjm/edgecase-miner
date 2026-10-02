@@ -33,6 +33,7 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+edgecase.egg-info/
 .ipynb_checkpoints/
 
 # --- os / editor junk ---
