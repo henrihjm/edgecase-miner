@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Edge-Case Miner</title>
+<style>
+  :root { --bg:#fff; --fg:#111; --muted:#555; --line:#ccc; --ok:#0a6b2d; --bad:#a11212; --warn:#8a5a00; --accent:#0b4fbf; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:24px 32px 64px; background:var(--bg); color:var(--fg); font:20px/1.45 system-ui, sans-serif; }
+  h1 { font-size:36px; margin:0 0 4px; }
+  h2 { font-size:26px; margin:40px 0 12px; border-bottom:2px solid var(--fg); padding-bottom:4px; }
+  p.sub { color:var(--muted); margin:0 0 20px; }
+  form { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  input[type=text] { flex:1 1 480px; font:inherit; padding:12px 14px; border:2px solid var(--fg); border-radius:6px; }
+  button { font:inherit; font-weight:600; padding:12px 20px; border:2px solid var(--fg); border-radius:6px; background:var(--fg); color:#fff; cursor:pointer; }
+  button.secondary { background:#fff; color:var(--fg); }
+  button:disabled { opacity:.45; cursor:default; }
+  #groups { display:flex; gap:16px; flex-wrap:wrap; margin-top:12px; font-size:18px; }
+  #progress { display:flex; gap:28px; flex-wrap:wrap; margin-top:20px; font-size:22px; }
+  #progress b { font-size:34px; display:block; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); } .warn { color:var(--warn); }
+  #stage { color:var(--accent); font-weight:600; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:18px; }
+  .card { border:2px solid var(--line); border-radius:8px; padding:12px; }
+  .card.confirmed { border-color:var(--ok); } .card.rejected { border-color:var(--bad); } .card.unverified { border-color:var(--warn); }
+  .card video { width:100%; background:#000; border-radius:4px; }
+  .card .meta { font-size:16px; color:var(--muted); margin:6px 0; }
+  .card .reason { font-weight:600; margin:6px 0; }
+  .card .why { font-size:17px; margin:6px 0 0; }
+  .tags { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+  .tags span { font-size:15px; border:1px solid var(--fg); border-radius:999px; padding:1px 10px; }
+  table { border-collapse:collapse; }
+  th, td { border:1px solid var(--line); padding:8px 16px; text-align:center; }
+  th:first-child, td:first-child { text-align:left; }
+  td.zero { background:#f6dada; color:var(--bad); font-weight:600; }
+  td.some { background:#d9f0df; color:var(--ok); font-weight:600; }
+  pre { white-space:pre-wrap; background:#f3f3f3; padding:12px; border-radius:6px; font-size:17px; }
+  textarea { width:100%; font:17px/1.4 ui-monospace, monospace; padding:10px; border:2px solid var(--fg); border-radius:6px; }
+  .error { color:var(--bad); font-weight:600; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<h1>Edge-Case Miner</h1>
+<p class="sub">One sentence in. A verified, labelled dataset out, plus what you still need to collect.</p>
+
+<form id="form">
+  <input id="request" type="text" placeholder="e.g. forklift passing close to a person" required minlength="3" maxlength="300">
+  <button id="go">Mine</button>
+  <button id="export" type="button" class="secondary" disabled>Export dataset</button>
+</form>
+<div id="groups"></div>
+<p id="error" class="error"></p>
+
+<div id="progress" hidden>
+  <div><b id="n-searched">0</b>searched</div>
+  <div><b id="n-verified">0</b>verified</div>
+  <div class="ok"><b id="n-confirmed">0</b>confirmed</div>
+  <div class="bad"><b id="n-rejected">0</b>rejected</div>
+  <div class="warn"><b id="n-unverified">0</b>unverified</div>
+  <div><b id="stage">&nbsp;</b><span id="plan"></span></div>
+</div>
+
+<section id="results" hidden>
+  <h2>Confirmed clips</h2><div id="confirmed" class="grid"></div>
+  <h2>Rejected and unverified (verification is real)</h2><div id="rejected" class="grid"></div>
+  <h2>Coverage</h2><div id="coverage"></div>
+  <h2>Gaps and next collection</h2><p id="gaps"></p><ul id="plan-lines"></ul>
+  <h2>Re-ingest loop</h2>
+  <p id="loop-note"></p>
+  <button id="propose" type="button" class="secondary" hidden>Propose a better ingestion prompt</button>
+  <div id="proposal" hidden>
+    <p>Proposed superset prompt (editable, max 800 characters):</p>
+    <textarea id="prompt" rows="6" maxlength="800"></textarea>
+    <p>Chunks to re-ingest (chunk_count 1 each). This replaces their captions on shared infrastructure.</p>
+    <div id="chunks"></div>
+    <p><button id="approve" type="button">Approve and re-ingest</button></p>
+  </div>
+  <div id="loop-log"></div>
+</section>
+
+<script>
+const $ = id => document.getElementById(id);
+const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
+let runId = null, timer = null, lastKey = "";
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) { let d = r.statusText; try { d = (await r.json()).detail || d; } catch (e) {} throw new Error(typeof d === "string" ? d : JSON.stringify(d)); }
+  return r;
+}
+const post = (path, body) => api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+
+async function loadCameras() {
+  try {
+    const { cameras } = await (await api("/api/cameras")).json();
+    for (const cam of cameras) {
+      const label = el("label"), box = el("input");
+      box.type = "checkbox"; box.value = cam;
+      label.append(box, " " + cam); $("groups").append(label);
+    }
+  } catch (e) { $("error").textContent = "Could not load camera groups: " + e.message; }
+}
+
+$("form").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  $("error").textContent = "";
+  const groups = [...document.querySelectorAll("#groups input:checked")].map(b => b.value);
+  try {
+    runId = (await (await post("/api/mine", { request: $("request").value, groups })).json()).id;
+    lastKey = ""; $("progress").hidden = false; $("results").hidden = true; $("proposal").hidden = true;
+    clearInterval(timer); timer = setInterval(poll, 1500); poll();
+  } catch (e) { $("error").textContent = e.message; }
+});
+
+function card(c) {
+  const d = el("div", null, "card " + c.status);
+  const v = el("video"); v.controls = true; v.muted = true; v.preload = "metadata"; v.src = "/api/clip/" + c.clip_id;
+  d.append(v);
+  const q = c.quality ? "  quality " + c.quality.score : "";
+  d.append(el("div", c.camera_id + "  similarity " + c.similarity + q, "meta"));
+  d.append(el("div", c.reason || "", "reason"));
+  const tags = el("div", null, "tags"), L = c.labels || {};
+  for (const k of ["action", "distance_class", "lighting", "weather", "occlusion"]) if (L[k]) tags.append(el("span", k.replace("_class", "") + ": " + L[k]));
+  if (Array.isArray(L.actors) && L.actors.length) tags.append(el("span", "actors: " + L.actors.join(", ")));
+  d.append(tags, el("p", c.reasoning || "", "why"));
+  return d;
+}
+
+function renderCoverage(cov) {
+  const box = $("coverage"); box.replaceChildren();
+  const rows = cov.by_camera_lighting, lights = [...new Set(Object.values(rows).flatMap(Object.keys))];
+  const t = el("table"), head = el("tr"); head.append(el("th", "camera group")); lights.forEach(l => head.append(el("th", l))); t.append(head);
+  for (const [cam, row] of Object.entries(rows)) {
+    const tr = el("tr"); tr.append(el("td", cam));
+    lights.forEach(l => tr.append(el("td", String(row[l] || 0), row[l] ? "some" : "zero")));
+    t.append(tr);
+  }
+  box.append(t);
+  for (const [name, key] of [["By action", "by_action"], ["By distance", "by_distance"]]) {
+    const parts = Object.entries(cov[key] || {}).map(([k, n]) => k + " ×" + n).join(",  ");
+    if (parts) box.append(el("p", name + ": " + parts));
+  }
+}
+
+function renderLoop(run) {
+  const its = (run.loop && run.loop.iterations) || [], log = $("loop-log"); log.replaceChildren();
+  its.forEach((it, i) => {
+    log.append(el("h3", "Iteration " + (i + 1) + ": " + it.status + (it.seconds ? " (" + it.seconds + " s)" : "")));
+    log.append(el("pre", it.prompt));
+    (it.jobs || []).forEach(j => log.append(el("p", "Re-ingested " + j.original_video + "  " + (j.progress || ""))));
+    const before = it.before.confirmed, after = it.after ? it.after.confirmed : "…";
+    log.append(el("p", "Confirmed clips: before " + before + ", after " + after, "reason"));
+    if (it.error) log.append(el("p", it.error, "error"));
+  });
+  $("loop-note").textContent = run.needs_loop
+    ? run.counts.confirmed + " confirmed, target " + run.target + ". The agent can rewrite the ingestion prompt and re-index the closest chunks."
+    : (its.length ? "" : "Target of " + run.target + " confirmed clips reached, or the loop limit is used up.");
+  $("propose").hidden = !run.needs_loop;
+}
+
+async function poll() {
+  if (!runId) return;
+  let run;
+  try { run = await (await api("/api/runs/" + runId)).json(); } catch (e) { $("error").textContent = e.message; return; }
+  const n = run.counts || {};
+  for (const k of ["searched", "verified", "confirmed", "rejected", "unverified"]) $("n-" + k).textContent = n[k] || 0;
+  $("stage").textContent = run.stage;
+  $("plan").textContent = run.plan ? "query: " + run.plan.query : "";
+  $("error").textContent = run.error || "";
+  const done = run.stage === "done";
+  $("export").disabled = !done || !n.confirmed;
+  $("go").disabled = !done;
+  const key = JSON.stringify([run.stage, n, (run.loop || {}).iterations]);
+  if (key === lastKey) return;
+  lastKey = key;
+  const shown = run.candidates.filter(c => c.status !== "candidate");
+  if (shown.length || done) $("results").hidden = false;
+  $("confirmed").replaceChildren(...shown.filter(c => c.status === "confirmed").map(card));
+  $("rejected").replaceChildren(...shown.filter(c => c.status !== "confirmed").map(card));
+  if (run.report) {
+    renderCoverage(run.report.coverage);
+    $("gaps").textContent = run.report.gap_report;
+    $("plan-lines").replaceChildren(...run.report.collection_plan.map(l => el("li", l)));
+  }
+  renderLoop(run);
+  if (done) { clearInterval(timer); timer = null; }
+}
+
+$("export").addEventListener("click", async () => {
+  try {
+    const r = await post("/api/runs/" + runId + "/export");
+    const a = el("a"); a.href = URL.createObjectURL(await r.blob()); a.download = "edgecase-" + runId + ".zip"; a.click();
+  } catch (e) { $("error").textContent = e.message; }
+});
+
+$("propose").addEventListener("click", async () => {
+  try {
+    const p = await (await post("/api/runs/" + runId + "/loop/propose")).json();
+    $("prompt").value = p.prompt;
+    $("chunks").replaceChildren(...p.chunks.map(c => { const l = el("label"), b = el("input"); b.type = "checkbox"; b.checked = true; b.value = c; l.append(b, " " + c); const d = el("div"); d.append(l); return d; }));
+    $("proposal").hidden = false; $("approve").disabled = !p.chunks.length;
+  } catch (e) { $("error").textContent = e.message; }
+});
+
+$("approve").addEventListener("click", async () => {
+  const chunks = [...document.querySelectorAll("#chunks input:checked")].map(b => b.value);
+  try {
+    await post("/api/runs/" + runId + "/loop/approve", { prompt: $("prompt").value, chunks });
+    $("proposal").hidden = true; lastKey = "";
+    clearInterval(timer); timer = setInterval(poll, 1500); poll();
+  } catch (e) { $("error").textContent = e.message; }
+});
+
+loadCameras();
+</script>
+</body>
+</html>

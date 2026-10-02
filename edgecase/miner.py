@@ -7,7 +7,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .config import Settings, load_settings
 from .llm import LLMClient
@@ -48,6 +48,9 @@ class MineResult:
     request: str
     query: str
     camera_ids: list[str]
+    all_cameras: list[str] = field(default_factory=list)
+    groups: list[str] | None = None
+    searched: int = 0
     candidates: list[dict[str, Any]] = field(default_factory=list)
     confirmed: list[dict[str, Any]] = field(default_factory=list)
     rejected: list[dict[str, Any]] = field(default_factory=list)
@@ -107,7 +110,9 @@ def _search_merged(
             min_similarity=min_similarity,
             metadata_filters={"camera_id": camera_ids[0]},
         )
-        return list(data.get("results") or [])
+        return [
+            {**row, "_camera": camera_ids[0]} for row in data.get("results") or []
+        ]
 
     # Multiple cameras: fan out and merge by similarity
     per = max(5, top_k // len(camera_ids) + 5)
@@ -125,7 +130,7 @@ def _search_merged(
             if prev is None or float(row.get("similarity_score") or 0) > float(
                 prev.get("similarity_score") or 0
             ):
-                by_source[src] = row
+                by_source[src] = {**row, "_camera": cam}
     merged = sorted(
         by_source.values(),
         key=lambda r: float(r.get("similarity_score") or 0),
@@ -208,6 +213,7 @@ def _process_one(
             }
 
     think = (verification.get("think") or "").replace("\n", " ").strip()
+    think_full = think
     if len(think) > 120:
         think = think[:117] + "..."
 
@@ -215,6 +221,8 @@ def _process_one(
         "source": source,
         "filename": (row.get("filename") or source.rsplit("/", 1)[-1]),
         "original_video": row.get("original_video"),
+        "camera_id": row.get("camera_id") or row.get("_camera") or "unknown",
+        "think_full": think_full,
         "start_time": row.get("start_time") or row.get("t_start"),
         "end_time": row.get("end_time") or row.get("t_end"),
         "similarity": similarity,
@@ -242,7 +250,9 @@ def mine(
     min_similarity: float = 0.3,
     settings: Settings | None = None,
     skip_llm_plan: bool = False,
+    on_progress: Callable[[str, int, list[dict[str, Any]]], None] | None = None,
 ) -> MineResult:
+    """on_progress(stage, searched_count, processed_so_far) lets a UI show live counts."""
     settings = settings or load_settings()
     verify_n = max(0, min(20, verify_n))  # hard bound from brief
 
@@ -276,6 +286,8 @@ def mine(
         search_s = time.time() - t_search
 
         candidates = results[:verify_n]
+        if on_progress:
+            on_progress("verifying", len(results), [])
         processed: list[dict[str, Any]] = []
         verify_s_total = 0.0
 
@@ -297,6 +309,8 @@ def mine(
                     ]
                     for fut in as_completed(futs):
                         processed.append(fut.result())
+                        if on_progress:
+                            on_progress("verifying", len(results), list(processed))
                 verify_s_total = time.time() - t_v
             finally:
                 verifier.close()
@@ -312,6 +326,9 @@ def mine(
             request=request,
             query=query,
             camera_ids=camera_ids,
+            all_cameras=all_cams,
+            groups=groups,
+            searched=len(results),
             candidates=processed,
             confirmed=confirmed,
             rejected=rejected,

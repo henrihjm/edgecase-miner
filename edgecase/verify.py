@@ -114,7 +114,9 @@ class CosmosVerifier:
         else:
             result = self._parse(content, source=source, question=question)
 
-        cache_path.write_text(json.dumps(result, indent=2))
+        # Never cache a fallback: an overloaded endpoint should be asked again next run.
+        if not result.get("fallback"):
+            cache_path.write_text(json.dumps(result, indent=2))
         return result
 
     def _parse(self, content: str, *, source: str, question: str) -> dict[str, Any]:

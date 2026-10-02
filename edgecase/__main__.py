@@ -6,9 +6,12 @@ import argparse
 import sys
 import time
 
+from . import loop
 from .config import load_settings
+from .export import export_dataset
 from .llm import LLMClient
 from .miner import mine
+from .report import build_report, coverage_table_md
 from .vss_client import VSSClient
 
 
@@ -91,6 +94,40 @@ def _short_source(source: str, width: int = 42) -> str:
 
 def cmd_mine(args: argparse.Namespace) -> int:
     settings = load_settings()
+    result = _mine_and_print(args, settings)
+    report = _report(result, settings)
+    _print_report(report)
+
+    iterations: list[dict] = []
+    while args.loop and loop.needs_loop(result, len(iterations), args.target):
+        proposal = loop.propose(result, report, settings)
+        print(f"\nonly {len(result.confirmed)} confirmed (target {args.target}). proposed re-ingest:")
+        print(f"  prompt ({len(proposal['prompt'])} chars, by {proposal['prompt_source']}): {proposal['prompt']}")
+        print("  chunks (chunk_count 1 each):", *proposal["chunks"], sep="\n    ")
+        if not proposal["chunks"]:
+            print("no chunk to re-ingest.")
+            break
+        answer = input("re-ingest REPLACES these chunks' captions. start? [y/N] ")
+        if answer.strip().lower() != "y":
+            print("skipped re-ingest.")
+            break
+        result, report, it = loop.execute(
+            result, proposal, settings, top_k=args.top_k, verify_n=args.verify
+        )
+        iterations.append(it)
+        print(
+            f"iteration took {it['seconds']}s (re-ingest {it.get('reingest_seconds')}s). "
+            f"confirmed before {it['before']['confirmed']}, after {it['after']['confirmed']}."
+        )
+        _print_table(result)
+        _print_report(report)
+
+    if args.export:
+        print(f"\nexported: {export_dataset(result, report, settings, iterations)}")
+    return 0
+
+
+def _mine_and_print(args: argparse.Namespace, settings):
     print(f"mining: {args.request!r}")
     print(
         f"groups={args.groups or ['all']} top_k={args.top_k} verify={args.verify}"
@@ -117,6 +154,11 @@ def cmd_mine(args: argparse.Namespace) -> int:
         f"confirmed={len(result.confirmed)} rejected={len(result.rejected)} "
         f"checked={len(result.candidates)}"
     )
+    _print_table(result)
+    return result
+
+
+def _print_table(result) -> None:
     print()
     header = (
         f"{'KEEP':4} {'SIM':>5} {'VER':>10} {'Q':>5}  "
@@ -135,6 +177,27 @@ def cmd_mine(args: argparse.Namespace) -> int:
         print(f"{keep:4} {sim:>5} {ver:>10} {q:>5}  {src:42}  {reason}")
         print(f"{'':4} {'':5} {'':10} {'':5}  {'':42}  {think}")
 
+
+def _print_report(report: dict) -> None:
+    print()
+    print(coverage_table_md(report["coverage"]))
+    print(f"\ngap report ({report.get('source')}): {report['gap_report']}")
+    for line in report["collection_plan"]:
+        print(f"  - {line}")
+
+
+def _report(result, settings) -> dict:
+    llm = LLMClient(settings)
+    try:
+        return build_report(result, llm)
+    finally:
+        llm.close()
+
+
+def cmd_serve(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    uvicorn.run("edgecase.app:app", host=args.host, port=args.port)
     return 0
 
 
@@ -150,7 +213,18 @@ def main(argv: list[str] | None = None) -> int:
     p_mine.add_argument("--groups", nargs="*", default=None)
     p_mine.add_argument("--top-k", type=int, default=40)
     p_mine.add_argument("--verify", type=int, default=20)
+    p_mine.add_argument("--target", type=int, default=loop.TARGET_CONFIRMED)
+    p_mine.add_argument(
+        "--loop", action="store_true",
+        help="offer the re-ingest loop when too few clips pass (asks before starting)",
+    )
+    p_mine.add_argument("--export", action="store_true", help="write the dataset zip")
     p_mine.set_defaults(func=cmd_mine)
+
+    p_serve = sub.add_parser("serve", help="Run the web UI")
+    p_serve.add_argument("--host", default="127.0.0.1")
+    p_serve.add_argument("--port", type=int, default=8000)
+    p_serve.set_defaults(func=cmd_serve)
 
     args = parser.parse_args(argv)
     return int(args.func(args))

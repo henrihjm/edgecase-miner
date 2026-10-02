@@ -75,3 +75,25 @@ High search signal already; short clips; good for end-to-end verify/quality befo
 - confirmed **6** / rejected **2** (both cosmos **NO** — good demo of real verification)
 - Search similarities lower (0.14–0.20) than warehouse; Cosmos still decisive
 - verify_wall ~24s for 8 clips (~3s/clip amortized)
+
+## Phases 2 to 5 (written off the VM, 2026-10-02 afternoon)
+
+Report, export, re-ingest loop, web UI, README, demo script and submission draft were added on top
+of the live-tested Phase 0 and 1 code. They have NOT run against the live stack yet. They pass an
+end-to-end test against a mock built from the skill docs (`python -m pytest tests -q`).
+
+Check on the first live run:
+
+- `python -m edgecase mine "forklift near a person" --groups warehouse --export` (coverage table,
+  gap report, zip in `exports/`)
+- `python -m edgecase serve`, then one request in the browser: live counters, inline clip playback,
+  rejected strip, coverage table, Export button
+- `camera_id` on search rows: coverage rows need it. It is taken from the row, else from the camera
+  filter used; with an unfiltered search and no `camera_id` on the row it shows as "unknown"
+- The loop: `--loop` in the CLI or "Propose a better ingestion prompt" in the UI. Both ask before
+  re-ingesting. Measure one iteration and fill the timing above
+
+Changes to Phase 0 and 1 code: `verify.py` no longer caches an "unverified" fallback (so an
+overloaded endpoint is asked again); `miner.py` rows carry `camera_id` and the full Cosmos
+reasoning, and `mine()` takes an optional `on_progress`; `config.py` accepts an already exported
+environment when `/config` is absent.

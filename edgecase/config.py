@@ -7,9 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-def _source_team_config() -> Path:
+def _source_team_config() -> Path | None:
     config_dir = Path("/config")
     matches = sorted(config_dir.glob("*.config"))
+    if len(matches) != 1 and os.environ.get("INGRESS_URL"):
+        return None  # already exported (VM shell, tests)
     if len(matches) != 1:
         raise RuntimeError(
             f"expected exactly one /config/*.config, found {len(matches)}"
