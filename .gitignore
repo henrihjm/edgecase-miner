@@ -7,6 +7,10 @@
 !/BEFORE_YOU_BUILD.md
 !/BUILD_DAY.md
 !/HACKATHON_GUIDELINES.md
+!/ARCHITECTURE_REFERENCE.md
+!/SUBMISSION.md
+!/NOTES.md
+!/DEMO.md
 
 # --- internal / agent context (not for attendees) ---
 .claude/
@@ -48,11 +52,8 @@ verify-vm.sh
 
 # --- live screen ---
 screen/
+
+# --- Edge-Case Miner local data ---
 cache/
 clips/
 exports/
-*.log
-.env
-__pycache__/
-*.pyc
-.venv/
