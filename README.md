@@ -27,6 +27,16 @@ San Francisco) on top of the organisers' prebuilt video pipeline.
    searches and verifies again. At most two iterations. Every re-ingest is logged in
    `reingest_log.jsonl`.
 
+## Screenshots (live run, Toronto dashcam, "pedestrian near a vehicle")
+
+![Overview: counters and confirmed clips](docs/images/edgecase/ui-overview.png)
+
+![Confirmed clips with labels and Cosmos reasoning](docs/images/edgecase/ui-confirmed.png)
+
+![Rejected clips: Cosmos said no](docs/images/edgecase/ui-rejected.png)
+
+![Gap report and next-collection plan](docs/images/edgecase/ui-gaps.png)
+
 ## Architecture
 
 ```
@@ -72,7 +82,7 @@ Limits: at most 20 Cosmos verifications per query, two at a time, 60 second time
 Answers are cached on disk by clip and question.
 
 Measured on the live stack: search 2.5 to 11 s, Cosmos verification about 2.5 to 3 s per clip, a
-20-clip pass about one minute. See [NOTES.md](NOTES.md).
+20-clip pass about one minute, one re-ingest loop iteration (two chunks) 78 s. See [NOTES.md](NOTES.md).
 
 ## Tests
 

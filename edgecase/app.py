@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from . import loop
+from . import loop, stills
 from .config import Settings, load_settings
 from .export import export_dataset
 from .llm import LLMClient
@@ -58,17 +58,43 @@ def _report(result) -> dict[str, Any]:
         llm.close()
 
 
+# Friendly names for the page. Anything not listed falls back to the raw camera_id.
+CAMERA_NAMES: dict[str, dict[str, str]] = {
+    "sdg_warehouse_cam-2": {"name": "Warehouse", "place": "Synthetic, indoor"},
+    "pie_cam-3": {"name": "Toronto dashcam", "place": "Toronto"},
+    "neighborhood_cam-1": {"name": "Neighbourhood", "place": "Street camera"},
+    "i24_cam-1": {"name": "I-24 highway", "place": "Nashville"},
+    "sf_streets_cam-1": {"name": "SF streets 1", "place": "San Francisco"},
+    "sf_streets_cam-2": {"name": "SF streets 2", "place": "San Francisco"},
+    "sf_streets_cam-3": {"name": "SF streets 3", "place": "San Francisco"},
+    "sf_streets_cam-4": {"name": "SF streets 4", "place": "San Francisco"},
+    "smartspace_cam-1": {"name": "Smart space", "place": "Indoor"},
+}
+
+
 def _card(row: dict[str, Any]) -> dict[str, Any]:
     """What the page needs for one clip. No S3 URIs beyond the source, no tokens."""
     return {
         "clip_id": Path(row.get("clip_path") or "").stem,
+        "source": row.get("source"),
+        "filename": row.get("filename"),
         "camera_id": row.get("camera_id"),
+        "camera": CAMERA_NAMES.get(row.get("camera_id") or "", {}).get("name") or row.get("camera_id"),
+        "start_time": row.get("start_time"),
+        "end_time": row.get("end_time"),
         "similarity": round(float(row.get("similarity") or 0), 3),
         "status": status(row),
+        "verdict": row.get("verdict"),
         "reason": row.get("reason"),
         "reasoning": row.get("think_full") or row.get("think") or "",
+        "caption": row.get("reasoning_content") or "",
         "labels": row.get("labels") or {},
-        "quality": {"score": row.get("quality")},
+        "quality": {
+            "score": row.get("quality"),
+            "blur": row.get("blur"),
+            "detections": row.get("detections") or {},
+        },
+        "timings": row.get("timings") or {},
     }
 
 
@@ -125,12 +151,13 @@ def health() -> dict[str, str]:
 
 
 @app.get("/api/cameras")
-def cameras() -> dict[str, list[str]]:
+def cameras() -> dict[str, list[dict[str, Any]]]:
     try:
         with VSSClient(settings()) as vss:
-            return {"cameras": list(vss.metadata_values("camera_id").get("values") or [])}
+            ids = list(vss.metadata_values("camera_id").get("values") or [])
     except Exception as exc:
         raise HTTPException(502, f"backend not reachable: {type(exc).__name__}")
+    return {"cameras": [{"id": c, **CAMERA_NAMES.get(c, {"name": c, "place": ""})} for c in ids]}
 
 
 @app.post("/api/mine")
@@ -169,6 +196,20 @@ def clip(clip_id: str) -> FileResponse:
     if not path.is_file():
         raise HTTPException(404, "clip not downloaded")
     return FileResponse(path, media_type="video/mp4")
+
+
+@app.get("/api/still/{clip_id}/{index}")
+def still(clip_id: str, index: int) -> FileResponse:
+    """One of five evenly spaced frames of a cached clip (2 is the poster). Rendered once, then cached."""
+    if not re.fullmatch(r"[0-9a-f]{24}", clip_id) or not 0 <= index < stills.FRAMES:
+        raise HTTPException(400, "bad still id")
+    clip = settings().cache_dir / "clips" / f"{clip_id}.mp4"
+    if not clip.is_file():
+        raise HTTPException(404, "clip not downloaded")
+    path = stills.still(clip, settings().cache_dir / "stills", index)
+    if path is None:
+        raise HTTPException(404, "could not decode clip")
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
 
 
 def _finished(run: dict[str, Any]):
