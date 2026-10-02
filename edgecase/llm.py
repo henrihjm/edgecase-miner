@@ -130,25 +130,30 @@ class LLMClient:
                     "Captions of near-miss clips (what the current prompt captured):\n- "
                     + "\n- ".join(c[:300] for c in near_miss_captions[:6])
                     + f"\nCurrent coverage: {coverage_summary}\n"
-                    "Write a new captioning prompt UNDER 750 characters. It must be a superset: first ask "
-                    "for a general description of the scene (setting, all actors, objects, motion) so general "
-                    "search still works, then ask explicitly for the fields this request needs: each actor's "
-                    "action, distances between actors (contact, under 2 m, 2 to 5 m, over 5 m), lighting, "
-                    "weather and occlusion. It must name the specific objects and situation of the request "
-                    "so the captions mention them when present. Reply with the prompt text only."
+                    "Write the specific part of a captioning prompt, UNDER 500 characters. It will be appended "
+                    "after a general scene-description instruction, so do not repeat that. Ask for: each "
+                    "actor's action, distances between actors (contact, under 2 m, 2 to 5 m, over 5 m), "
+                    "lighting, weather, occlusion, and whether the situation in the request is visible, "
+                    "naming its objects generically. Never copy details of one particular clip (names, "
+                    "colours, brands). Reply with the prompt text only."
                 )}],
                 max_tokens=400,
                 temperature=0.2,
             ).strip().strip('"')
         except Exception:
             text = ""
-        if text and len(text) <= 800:
-            # Small models sometimes drop the request itself; make sure the captioner is asked about it.
+        if text:
+            # Superset rule: a general description always comes first, whatever the model wrote, so
+            # general search keeps working. Small models also tend to copy one clip's specifics.
+            general = ("First describe the scene in general for search: the setting, every person, vehicle "
+                       "and object, and how each one moves. Then: ")
             focus = f" State explicitly whether the clip shows: {request[:150]}."
-            words = [w for w in re.findall(r"[a-z]{4,}", request.lower())]
-            if words and not all(w in text.lower() for w in words) and len(text) + len(focus) <= 800:
+            words = re.findall(r"[a-z]{4,}", request.lower())
+            if words and not all(w in text.lower() for w in words):
                 text += focus
-            return {"prompt": text, "source": "llm"}
+            text = general + text[0].lower() + text[1:]
+            if len(text) <= 800:
+                return {"prompt": text, "source": "llm"}
         return {
             "prompt": (
                 "Describe this clip for search. First give a general description: the setting, every actor "
