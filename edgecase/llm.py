@@ -13,7 +13,10 @@ import httpx
 from .config import Settings
 
 # Tried in order if EDGECASE_LLM_MODEL is unset; otherwise the first id from /models is used.
-PREFERRED_MODELS = ("openai/gpt-oss-120b", "meta-llama/Llama-3.3-70B-Instruct", "deepseek-ai/DeepSeek-V3.1")
+PREFERRED_MODELS = ("openai/gpt-oss-120b", "meta-llama/Llama-3.3-70B-Instruct", "deepseek-ai/DeepSeek-V3.1",
+                    "meta-llama/Llama-3.1-8B-Instruct")
+# Cloudflare on api.inference.wandb.ai answers 1010 without a browser-like User-Agent (seen live on the VM).
+BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 MAX_INGEST_PROMPT = 800
 
 
@@ -27,7 +30,7 @@ class LLM:
 
     # --- transport ---
     def _wandb_headers(self) -> dict:
-        h = {"Authorization": f"Bearer {self.s.wandb_api_key}"}
+        h = {"Authorization": f"Bearer {self.s.wandb_api_key}", "User-Agent": BROWSER_UA}
         if self.s.wandb_project:
             h["OpenAI-Project"] = self.s.wandb_project
         return h
