@@ -149,6 +149,28 @@
     if (!n) return; n.scrollIntoView({ behavior: "smooth", block: "start" }); n.classList.add("eca-focus"); focused = n;
   };
 
+  /* ---------- page adapter: use the dashboard's own hooks when they exist, so everything shows on the page ---------- */
+  const page = {
+    setRequest(text) { const r = $("request"); if (r) { r.value = text; r.classList.add("eca-filled"); r.dispatchEvent(new Event("input")); } },
+    setGroups(ids) {
+      for (const b of document.querySelectorAll("#groups input[type=checkbox]")) b.checked = ids.includes(b.value);
+      const scopes = $("scopes");
+      if (scopes) for (const b of scopes.querySelectorAll(".src")) b.classList.toggle("on", b.dataset.id ? ids.includes(b.dataset.id) : !ids.length);
+    },
+    attach(id, request, groups) {   // the page takes over rendering the run
+      window.dispatchEvent(new CustomEvent("edgecase:run", { detail: { id, request, groups } }));
+    },
+    showClip(c) {                    // the page's detail view if it has one; otherwise the panel's own player
+      try { if (typeof openSheet === "function" && typeof cardsById === "object" && cardsById[c.clip_id]) { openSheet(cardsById[c.clip_id]); return true; } } catch (e) {}
+      return false;
+    },
+    hideClip() { const b = $("d-close"); if (b) b.click(); },
+    filter(name) { const b = document.querySelector('#filters .f[data-f="' + name + '"]'); if (b) b.click(); },
+    propose() { const b = $("propose"); if (b && !b.hidden) b.click(); },   // page renders the proposal its own way
+    exportBtn() { const b = $("export"); return b && !b.hidden && !b.disabled ? (b.click(), true) : false; },
+    section(...ids) { for (const id of ids) if ($(id)) return scrollTo(id); },
+  };
+
   /* ---------- the conversation ---------- */
   let runId = null, busy = false;
   async function start() {
@@ -164,7 +186,7 @@
     if (/^(export|download)/i.test(text)) return exportRun();
     busy = true;
     try {
-      const req = $("request"); if (req) { req.value = text; req.classList.add("eca-filled"); }
+      page.setRequest(text);
       let cams = [];
       try { cams = (await (await api("/api/cameras")).json()).cameras.map(c => typeof c === "string" ? { id: c, name: c } : c); } catch (e) {}
       const groups = [];
@@ -175,14 +197,14 @@
         if (g && !/^(all|every|any|no|none|whatever)/.test(g.trim()))
           for (const c of cams) { const words = ((c.name || "") + " " + c.id).toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2);
             if (words.some(w => g.includes(w))) groups.push(c.id); }
-        for (const b of document.querySelectorAll("#groups input[type=checkbox]")) b.checked = groups.includes(b.value);
+        page.setGroups(groups);
       }
       await speak("I will search " + (groups.length ? groups.map(id => (cams.find(c => c.id === id) || {}).name || id).join(" and ") : "every camera group") +
         " for: " + text + ". Shall I start?");
       const a = await waitForAnswer(true);
       if (!isYes(a)) { await speak("Okay. Tell me the request again, or type it."); busy = false; const t = await waitForAnswer(false); return newRequest(t); }
       runId = (await (await post("/api/mine", { request: text, groups })).json()).id;
-      window.dispatchEvent(new CustomEvent("edgecase:run", { detail: { id: runId } }));
+      page.attach(runId, text, groups);
       speak("Searching every camera group, then verifying each candidate with Cosmos Reason. About a minute.");
       let run;
       while (true) {
@@ -202,20 +224,24 @@
     const confirmed = run.candidates.filter(c => c.status === "confirmed"), n = run.counts;
     if (confirmed.length) {
       const c = [...confirmed].sort((a, b) => rank(b) - rank(a) || b.similarity - a.similarity)[0], L = c.labels || {};
-      const hero = $("eca-hero"); hero.replaceChildren(); hero.classList.add("on");
-      const v = el("video"); v.src = "/api/clip/" + c.clip_id; v.controls = true; v.muted = true; v.autoplay = true; v.loop = true; hero.append(v);
-      scrollTo("confirmed");
+      page.filter("confirmed"); page.section("confirmed", "grid");
+      await sleep(600);
+      const hero = $("eca-hero"); hero.replaceChildren();
+      if (!page.showClip(c)) {
+        hero.classList.add("on");
+        const v = el("video"); v.src = "/api/clip/" + c.clip_id; v.controls = true; v.muted = true; v.autoplay = true; v.loop = true; hero.append(v);
+      }
       await speak("Here is one example from " + (c.camera || c.camera_id) + ". Cosmos Reason watched it and said: " + sentences(c.reasoning, 2) +
         " Labels: " + [L.action, L.distance_class && "distance " + L.distance_class.replace(/_/g, " "), L.lighting].filter(Boolean).join(", ") + ".");
-      hero.classList.remove("on");
-      scrollTo("rejected");
+      hero.classList.remove("on"); page.hideClip();
+      page.filter("rejected"); page.section("rejected", "grid");
       await speak("Altogether I confirmed " + n.confirmed + " clips and rejected " + n.rejected + (n.unverified ? ", with " + n.unverified + " unverified" : "") +
         ". Rejected means Cosmos said the event is not there, or the quality was too low. Every clip was checked, not just matched.");
     } else {
       await speak("I checked " + n.verified + " candidates and could not confirm one. That is a finding in itself.");
     }
     const rep = run.report || {};
-    scrollTo("coverage");
+    page.filter("confirmed"); page.section("coverage", "heat", "gaps");
     await speak("What is missing: " + sentences(rep.gap_report, 2) + (rep.collection_plan && rep.collection_plan.length ? " Next I would " + rep.collection_plan.slice(0, 2).join(", and ").toLowerCase() : ""));
     await improve(run);
   }
@@ -224,9 +250,9 @@
       "General description first, then distances, lighting and the event itself. Then I re-index the chunks that came closest and search again.");
     let proposal;
     try { proposal = await (await post("/api/runs/" + runId + "/loop/propose")).json(); } catch (e) { await speak("I could not prepare a proposal: " + e.message); return offerExport(run); }
-    const box = $("prompt"); if (box && "value" in box) box.value = proposal.prompt;
-    const prop = $("proposal"); if (prop) prop.hidden = false;
-    scrollTo("loop-note");
+    if ($("propose") && typeof $("propose").onclick === "function") page.propose();     // redesigned page renders it
+    else { const box = $("prompt"); if (box && "value" in box) box.value = proposal.prompt; const prop = $("proposal"); if (prop) prop.hidden = false; }
+    page.section("improve", "loop-note");
     $("eca-say").textContent = proposal.prompt;
     if (!(run.needs_loop && proposal.chunks.length)) {
       await speak("Here is the prompt I would use. The target of " + run.target + " confirmed clips is already reached, so no re-ingest is needed this time.");
@@ -236,7 +262,8 @@
     const a = await waitForAnswer(true);
     if (!isYes(a)) { await speak("Okay, not re-ingesting."); return offerExport(run); }
     await post("/api/runs/" + runId + "/loop/approve", { prompt: proposal.prompt, chunks: proposal.chunks });
-    window.dispatchEvent(new CustomEvent("edgecase:run", { detail: { id: runId } }));   // page: poll again
+    const prop = $("proposal"); if (prop) prop.hidden = true;
+    page.attach(runId);   // page: poll again
     speak("Re-ingesting with the new prompt, then searching and verifying again.");
     let r2;
     while (true) {
@@ -260,8 +287,10 @@
   async function exportRun() {
     if (!runId) return speak("There is no finished run to export yet.");
     try {
-      const r = await post("/api/runs/" + runId + "/export");
-      const a = el("a"); a.href = URL.createObjectURL(await r.blob()); a.download = "edgecase-" + runId + ".zip"; a.click();
+      if (!page.exportBtn()) {
+        const r = await post("/api/runs/" + runId + "/export");
+        const a = el("a"); a.href = URL.createObjectURL(await r.blob()); a.download = "edgecase-" + runId + ".zip"; a.click();
+      }
       await speak("Exported. Tell me another request whenever you like.");
     } catch (e) { await speak("Export failed: " + e.message); }
   }

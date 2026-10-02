@@ -26,7 +26,9 @@ ATTACH = """<script src="/static/assistant.js" defer></script>
 window.addEventListener("edgecase:run", e => {
   try {
     if (typeof runId === "undefined" || typeof poll !== "function") return;
-    runId = e.detail.id; lastKey = "";
+    runId = e.detail.id;
+    if (e.detail.request && typeof startRun === "function") return startRun(e.detail.request, e.detail.groups || []);
+    lastKey = "";
     const p = document.getElementById("progress"); if (p) p.hidden = false;
     clearInterval(timer); timer = setInterval(poll, 1500); poll();
   } catch (err) { console.warn("assistant attach:", err); }
